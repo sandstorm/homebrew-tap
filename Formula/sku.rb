@@ -2,17 +2,18 @@
 class Sku < Formula
   desc "Sandstorm Kubernetes Tools"
   homepage "https://github.com/sandstorm/sku"
-  version "0.9.1"
+  version "0.9.2"
 
   if OS.mac?
-    url "https://github.com/sandstorm/sku/releases/download/v0.9.1/sku_0.9.1_Darwin_x86_64.tar.gz"
-    sha256 "fd1231cdae05a32b2c88c0170bce4f2c5bb46bb5a69af978ecf82817ce1b5e15"
+    url "https://github.com/sandstorm/sku/releases/download/v0.9.2/sku_0.9.2_Darwin_x86_64.tar.gz"
+    sha256 "110f223859c5b1999b255a76ad0c502cafb927c71071d82ccea4f6ad81345bf5"
   elsif OS.linux?
   end
 
   def install
     bin.install "sku"
-    "#{bin}/sku_plugins".mkpath
+    sku_plugins = bin/"sku_plugins"
+    sku_plugins.mkpath
     bin.install "sku_plugins/sandstorm.so"
   end
 end
