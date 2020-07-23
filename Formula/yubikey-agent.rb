@@ -7,7 +7,7 @@ class YubikeyAgent < Formula
     homepage "https://filippo.io/yubikey-agent"
     url "https://github.com/skurfuerst/yubikey-agent/releases/download/custom-password-caching/yubikey-agent-osx.zip"
     sha256 "8c88f9bf0ff8fabe8fe2d4a61159aba46f425c297bfaeb205882038d8760afb0"
-    head "https://filippo.io/yubikey-agent", :using => :git
+    version "1.0.0-forked"
   
     depends_on "pinentry-mac"
   
