@@ -12,7 +12,7 @@ class YubikeyAgent < Formula
     depends_on "pinentry-mac"
   
     def install
-      bin.install "sku"
+      bin.install "yubikey-agent"
     end
   
     def post_install
