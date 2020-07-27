@@ -13,6 +13,6 @@ class Sku < Formula
 
   def install
     libexec.install Dir["*"]
-    bin.install_exec_script libexec/"sku"
+    bin.write_exec_script libexec/"sku"
   end
 end
