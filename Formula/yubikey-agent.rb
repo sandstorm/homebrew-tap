@@ -2,7 +2,7 @@
 # WHAT HAS CHANGED?
 # - using https://github.com/skurfuerst/yubikey-agent/releases/tag/custom-password-caching binary
 
-class YubikeyAgent < Formula
+class YubikeyAgentSandstorm < Formula
     desc "Seamless ssh-agent for YubiKeys"
     homepage "https://filippo.io/yubikey-agent"
     url "https://github.com/skurfuerst/yubikey-agent/releases/download/custom-password-caching/yubikey-agent-osx.zip"
