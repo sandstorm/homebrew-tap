@@ -13,6 +13,8 @@ class Sku < Formula
 
   def install
     libexec.install Dir["*"]
-    bin.write_exec_script libexec/"sku"
+    mkdir_p File.expand_path('~') + "/.docker/cli-plugins/"
+    ln_sf "#{libexec}/docker-execroot", File.expand_path('~') + "/.docker/cli-plugins/docker-execroot"
+    ln_sf "#{libexec}/docker-execroot", File.expand_path('~') + "/.docker/cli-plugins/docker-vscode"
   end
 end
