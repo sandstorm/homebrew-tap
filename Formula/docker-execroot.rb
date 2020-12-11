@@ -2,18 +2,34 @@
 class DockerExecroot < Formula
   desc "Sandstorm Docker Debug Tools"
   homepage "https://github.com/sandstorm/docker-execroot"
-  version "0.6.0"
+  version "1.0.0"
   bottle :unneeded
 
   if OS.mac?
-    url "https://github.com/sandstorm/docker-execroot/releases/download/v0.6.0/docker-execroot_0.6.0_Darwin_x86_64.tar.gz"
-    sha256 "810c330aa9aab97e4eda6e09a91058a72184fc09a92eb07660db033dfdd37237"
+    url "https://github.com/sandstorm/docker-execroot/releases/download/1.0.0/docker-execroot_1.0.0_Darwin_x86_64.tar.gz"
+    sha256 "50d3b290490cae931dd4eaf732e3c6e7a57c757570cbff6de8057842ea2408a4"
+  end
+
+  def caveats
+    caveats =
+      <<~EOS
+
+        !!! Please run the following commands to finish installing the docker-execroot plugin:
+
+        ---------------------------------------------------------------------------------
+        mkdir -p ~/.docker/cli-plugins
+        rm -f ~/.docker/cli-plugins/docker-execroot
+        ln -s #{pkgshare}/docker-execroot ~/.docker/cli-plugins/docker-execroot
+
+        rm -f ~/.docker/cli-plugins/docker-vscode
+        ln -s #{pkgshare}/docker-execroot ~/.docker/cli-plugins/docker-vscode
+        ---------------------------------------------------------------------------------
+      EOS
+
+    caveats
   end
 
   def install
-    libexec.install Dir["*"]
-    FileUtils.mkdir_p "/Users/sebastian/.docker/cli-plugins/"
-    ln_sf "#{libexec}/docker-execroot", File.expand_path('~') + "/.docker/cli-plugins/docker-execroot"
-    ln_sf "#{libexec}/docker-execroot", File.expand_path('~') + "/.docker/cli-plugins/docker-vscode"
+    pkgshare.install Dir["*"]
   end
 end
