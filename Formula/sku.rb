@@ -2,19 +2,16 @@
 class Sku < Formula
   desc "Sandstorm Kubernetes Tools"
   homepage "https://github.com/sandstorm/sku"
-  version "1.2.1"
+  version "1.2.2"
   bottle :unneeded
 
   if OS.mac?
-    url "https://github.com/sandstorm/sku/releases/download/1.2.1/sku_1.2.1_Darwin_x86_64.tar.gz"
-    sha256 "a490356046004b4c1cce04583793a2fdc004ab1f5635a47f5bcda94a8c4bc11d"
-  elsif OS.linux?
+    url "https://github.com/sandstorm/sku/releases/download/1.2.2/sku_1.2.2_Darwin_x86_64.tar.gz"
+    sha256 "833bd62e4581b1821426a63c6f1075b1bed474f1df35139e4ff0c4bd9151b86b"
   end
 
   def install
     libexec.install Dir["*"]
-    mkdir_p File.expand_path('~') + "/.docker/cli-plugins/"
-    ln_sf "#{libexec}/docker-execroot", File.expand_path('~') + "/.docker/cli-plugins/docker-execroot"
-    ln_sf "#{libexec}/docker-execroot", File.expand_path('~') + "/.docker/cli-plugins/docker-vscode"
+    bin.write_exec_script libexec/"sku"
   end
 end
