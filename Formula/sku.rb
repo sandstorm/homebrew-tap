@@ -2,12 +2,12 @@
 class Sku < Formula
   desc "Sandstorm Kubernetes Tools"
   homepage "https://github.com/sandstorm/sku"
-  version "1.1.0"
+  version "1.3.1"
   bottle :unneeded
 
   if OS.mac?
-    url "https://github.com/sandstorm/sku/releases/download/v1.1.0/sku_1.1.0_Darwin_x86_64.tar.gz"
-    sha256 "d380811e0bc27f5d84cb905f5b60014f93080df7646d953e38ed723db30be424"
+    url "https://github.com/sandstorm/sku/releases/download/1.3.1/sku_1.3.1_Darwin_x86_64.tar.gz"
+    sha256 "5fd931017b65b0d66eb1ce96912ce5b2287c3816d80d4a3ba5589700935e4a72"
   end
 
   def install
