@@ -5,14 +5,14 @@
 class Sku < Formula
   desc "Sandstorm Kubernetes Tools"
   homepage "https://github.com/sandstorm/sku"
-  version "1.6.1"
+  version "1.6.2"
   bottle :unneeded
   depends_on :macos
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/sku/releases/download/1.6.1/sku_1.6.1_Darwin_x86_64.tar.gz"
-      sha256 "42de6b4898a6d6a5a9be4816d5b6d42518dbb8202926fbafcc6214ba38d15689"
+      url "https://github.com/sandstorm/sku/releases/download/v1.6.2/sku_1.6.2_Darwin_x86_64.tar.gz"
+      sha256 "354f4ad0ef8378652143bf64f950f96bfa6bc8a08c687ea6d188720f3a66dda2"
     end
   end
 
