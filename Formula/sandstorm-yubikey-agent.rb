@@ -5,25 +5,53 @@
 class SandstormYubikeyAgent < Formula
   desc ""
   homepage "https://github.com/sandstorm/yubikey-agent"
-  version "0.1.5-p4"
+  version "0.1.5-p6"
   depends_on :macos
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/yubikey-agent/releases/download/v0.1.5-p4/yubikey-agent_0.1.5-p4_Darwin_arm64.tar.gz"
-      sha256 "bd518ffe00d21ab02112e1585bb40a25517f5db726d765e1b35fc7c9882cc99c"
+      url "https://github.com/sandstorm/yubikey-agent/releases/download/v0.1.5-p6/yubikey-agent_0.1.5-p6_Darwin_arm64.tar.gz"
+      sha256 "29385b98d93a964b6b479bf065aa9071fa7dcbc5273eedabeb51b380de93f95d"
 
       def install
         bin.install "yubikey-agent"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/yubikey-agent/releases/download/v0.1.5-p4/yubikey-agent_0.1.5-p4_Darwin_x86_64.tar.gz"
-      sha256 "a542f7c36e5f80803050a26fe4e13891a4cd9e9d0b3182260a08d34faadac556"
+      url "https://github.com/sandstorm/yubikey-agent/releases/download/v0.1.5-p6/yubikey-agent_0.1.5-p6_Darwin_x86_64.tar.gz"
+      sha256 "7a6609022aeffb178a23a2412c800bd496215524976d045b03d5f28cdfacfe23"
 
       def install
         bin.install "yubikey-agent"
       end
     end
+  end
+
+  def post_install
+    (var/"run").mkpath
+    (var/"log").mkpath
+  end
+
+  def caveats
+    <<~EOS
+      To use this SSH agent, add the config to ~/.ssh/config:
+
+        Host *
+          IdentityAgent #{var}/run/yubikey-agent.sock
+    EOS
+  end
+
+  service do
+    run [opt_bin/"yubikey-agent", "-l", var/"run/yubikey-agent.sock"]
+    keep_alive true
+    log_path var/"log/yubikey-agent.log"
+    error_log_path var/"log/yubikey-agent.log"
+  end
+
+  test do
+    socket = testpath/"yubikey-agent.sock"
+    fork { exec bin/"yubikey-agent", "-l", socket }
+    sleep 1
+    assert_predicate socket, :exist?
   end
 end
