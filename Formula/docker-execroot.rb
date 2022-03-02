@@ -3,7 +3,6 @@ class DockerExecroot < Formula
   desc "Sandstorm Docker Debug Tools"
   homepage "https://github.com/sandstorm/docker-execroot"
   version "1.0.1"
-  bottle :unneeded
 
   if OS.mac?
     url "https://github.com/sandstorm/docker-execroot/releases/download/1.0.1/docker-execroot_1.0.1_Darwin_x86_64.tar.gz"
