@@ -13,6 +13,7 @@ class Synco < Formula
       sha256 "fc187556c8c8966855e418b80ccda1c835e56c43937b2b2c604c7c009ebff6f3"
 
       def install
+        libexec.install Dir["*"]
         bin.write_exec_script libexec/"synco"
       end
     end
