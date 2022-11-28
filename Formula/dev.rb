@@ -11,7 +11,7 @@ class Dev < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/sandstorm/Sandstorm.DevScriptRunner/releases/download/v0.1.2/Sandstorm.DevScriptRunner_0.1.2_Darwin_arm64.tar.gz"
-      sha256 "2c0d9dabdc4ba843fb3b18ea184c9612dc33a19d78d5c6cf9627bb697fdb715b"
+      sha256 "9bc012976010bcd9debb9e06ac43093f538448afec6f75e3eed19df2c27bedc6"
 
       def install
         libexec.install Dir["*"]
@@ -20,7 +20,7 @@ class Dev < Formula
     end
     if Hardware::CPU.intel?
       url "https://github.com/sandstorm/Sandstorm.DevScriptRunner/releases/download/v0.1.2/Sandstorm.DevScriptRunner_0.1.2_Darwin_x86_64.tar.gz"
-      sha256 "13414039fd61c06557cd17b78bfdfc80437bfab1471c905fe9f4f9702436f690"
+      sha256 "135df2ab17acca382b7aeecf8c06751236340f89eb7f6138d0fc185ecb5a8b5d"
 
       def install
         libexec.install Dir["*"]
