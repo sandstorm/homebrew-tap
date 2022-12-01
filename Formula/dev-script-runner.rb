@@ -5,21 +5,21 @@
 class DevScriptRunner < Formula
   desc "Sandstorm Dev Script Runner"
   homepage "https://github.com/sandstorm/dev-script-runner"
-  version "0.2.0"
+  version "1.0.0"
   depends_on :macos
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/Sandstorm.DevScriptRunner/releases/download/v0.2.0/Sandstorm.DevScriptRunner_0.2.0_Darwin_arm64.tar.gz"
-      sha256 "af331563c3f0c5ec0f0a8b568d4bd8a8d703f0f7d4b9f47f324f5b8a61bf6ef2"
+      url "https://github.com/sandstorm/Sandstorm.DevScriptRunner/releases/download/v1.0.0/Sandstorm.DevScriptRunner_1.0.0_Darwin_arm64.tar.gz"
+      sha256 "a01ec4812aca3ab346593e9ef85152097284b22c201c43fbab05528f142face2"
 
       def install
         bin.install "dev-script-runner" => "dev"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/Sandstorm.DevScriptRunner/releases/download/v0.2.0/Sandstorm.DevScriptRunner_0.2.0_Darwin_x86_64.tar.gz"
-      sha256 "f416e72002c69a76f1553340199f2befd4055fe176ec9b84b0c5ee0f5419721c"
+      url "https://github.com/sandstorm/Sandstorm.DevScriptRunner/releases/download/v1.0.0/Sandstorm.DevScriptRunner_1.0.0_Darwin_x86_64.tar.gz"
+      sha256 "bdda709910a5f27e1f39a144bbcb121e76237aa30106a11dfd9b0a11da9a5516"
 
       def install
         bin.install "dev-script-runner" => "dev"
