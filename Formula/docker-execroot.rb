@@ -5,12 +5,12 @@
 class DockerExecroot < Formula
   desc "Sandstorm Docker Debug Tools"
   homepage "https://github.com/sandstorm/docker-execroot"
-  version "2.0.1"
+  version "2.0.2"
   depends_on :macos
 
   on_macos do
-    url "https://github.com/sandstorm/docker-execroot/releases/download/v2.0.1/docker-execroot_2.0.1_Darwin_x86_64.tar.gz"
-    sha256 "0724261962112b8c3412392e29c0769301c1eec01758352a849fc0c89f9daa9d"
+    url "https://github.com/sandstorm/docker-execroot/releases/download/v2.0.2/docker-execroot_2.0.2_Darwin_x86_64.tar.gz"
+    sha256 "92ca81d8985f030a823c929ca807416950c02c53dad855556d3422f8d4b2c256"
 
     def install
       pkgshare.install Dir["*"]
@@ -40,6 +40,9 @@ class DockerExecroot < Formula
 
         rm -f ~/.docker/cli-plugins/docker-vscode
         ln -s #{pkgshare}/docker-execroot ~/.docker/cli-plugins/docker-vscode
+
+        rm -f ~/.docker/cli-plugins/docker-phpprofiler
+        ln -s #{pkgshare}/docker-execroot ~/.docker/cli-plugins/docker-phpprofiler
         ---------------------------------------------------------------------------------
       EOS
 
