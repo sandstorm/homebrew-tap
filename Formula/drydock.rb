@@ -5,15 +5,16 @@
 class Drydock < Formula
   desc "Drydock - Docker Debug Tools"
   homepage "https://github.com/sandstorm/drydock"
-  version "3.0.1"
+  version "3.0.2"
   depends_on :macos
 
   on_macos do
-    url "https://github.com/sandstorm/drydock/releases/download/v3.0.1/drydock_3.0.1_Darwin_x86_64.tar.gz"
-    sha256 "359d189cba4f1b46cc438a0d54befaa9e6197beda46f9103d09571dae24c31eb"
+    url "https://github.com/sandstorm/drydock/releases/download/v3.0.2/drydock_3.0.2_Darwin_x86_64.tar.gz"
+    sha256 "23bce5f2749a372453ccf29137c4596ea7cd977d7b9008195a9948be5c347cf0"
 
     def install
-      pkgshare.install Dir["*"]
+      libexec.install Dir["*"]
+      bin.write_exec_script libexec/"drydock"
     end
 
     if Hardware::CPU.arm?
@@ -25,32 +26,5 @@ class Drydock < Formula
         EOS
       end
     end
-  end
-
-  def caveats
-    caveats =
-      <<~EOS
-
-        You can use "drydock" as standalone executable. If you find it more convenient as docker subcommands (i.e.
-        "docker execroot" instead of "drydock execroot", you can run the following commands to set up
-        docker plugin symlinks:
-
-        ---------------------------------------------------------------------------------
-        mkdir -p ~/.docker/cli-plugins
-        rm -f ~/.docker/cli-plugins/docker-execroot
-        ln -s #{pkgshare}/drydock ~/.docker/cli-plugins/docker-execroot
-
-        rm -f ~/.docker/cli-plugins/docker-vscode
-        ln -s #{pkgshare}/drydock ~/.docker/cli-plugins/docker-vscode
-
-        rm -f ~/.docker/cli-plugins/docker-phpprofiler
-        ln -s #{pkgshare}/drydock ~/.docker/cli-plugins/docker-phpprofiler
-
-        rm -f ~/.docker/cli-plugins/docker-xdebug
-        ln -s #{pkgshare}/drydock ~/.docker/cli-plugins/docker-xdebug
-        ---------------------------------------------------------------------------------
-      EOS
-
-    caveats
   end
 end
