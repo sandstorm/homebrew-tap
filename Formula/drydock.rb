@@ -5,12 +5,12 @@
 class Drydock < Formula
   desc "Drydock - Docker Debug Tools"
   homepage "https://github.com/sandstorm/drydock"
-  version "3.0.2"
+  version "3.0.3"
   depends_on :macos
 
   on_macos do
-    url "https://github.com/sandstorm/drydock/releases/download/v3.0.2/drydock_3.0.2_Darwin_x86_64.tar.gz"
-    sha256 "23bce5f2749a372453ccf29137c4596ea7cd977d7b9008195a9948be5c347cf0"
+    url "https://github.com/sandstorm/drydock/releases/download/v3.0.3/drydock_3.0.3_Darwin_x86_64.tar.gz"
+    sha256 "2b0254edfb971de416537dc4a1a9e7abbe5018dcb28a0004dd5be7200d6ad3e0"
 
     def install
       libexec.install Dir["*"]
