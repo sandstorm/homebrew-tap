@@ -5,25 +5,26 @@
 class Drydock < Formula
   desc "Drydock - Docker Debug Tools"
   homepage "https://github.com/sandstorm/drydock"
-  version "3.0.3"
+  version "3.0.4"
   depends_on :macos
 
   on_macos do
-    url "https://github.com/sandstorm/drydock/releases/download/v3.0.3/drydock_3.0.3_Darwin_x86_64.tar.gz"
-    sha256 "2b0254edfb971de416537dc4a1a9e7abbe5018dcb28a0004dd5be7200d6ad3e0"
-
-    def install
-      libexec.install Dir["*"]
-      bin.write_exec_script libexec/"drydock"
-    end
-
     if Hardware::CPU.arm?
-      def caveats
-        <<~EOS
-          The darwin_arm64 architecture is not supported for the Drydock
-          formula at this time. The darwin_amd64 binary may work in compatibility
-          mode, but it might not be fully supported.
-        EOS
+      url "https://github.com/sandstorm/drydock/releases/download/v3.0.4/drydock_3.0.4_Darwin_arm64.tar.gz"
+      sha256 "e28503f1d87b23877c1e7ea4b1bd015332dc6dd4031996d403ec1ca4c6d0fbce"
+
+      def install
+        libexec.install Dir["*"]
+        bin.write_exec_script libexec/"drydock"
+      end
+    end
+    if Hardware::CPU.intel?
+      url "https://github.com/sandstorm/drydock/releases/download/v3.0.4/drydock_3.0.4_Darwin_x86_64.tar.gz"
+      sha256 "de7b545e27376a67be68a574142c328c303ac3c26ace08e1c435316c6dcf7777"
+
+      def install
+        libexec.install Dir["*"]
+        bin.write_exec_script libexec/"drydock"
       end
     end
   end
