@@ -5,21 +5,47 @@
 class DevScriptRunner < Formula
   desc "Sandstorm Dev Script Runner"
   homepage "https://github.com/sandstorm/dev-script-runner"
-  version "2.3.1"
-  depends_on :macos
+  version "2.3.2"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.1/dev-script-runner_2.3.1_Darwin_arm64.tar.gz"
-      sha256 "0377ce1e856b54aca5d1e87b0abc882680adb8a22d24a466b445e9d1c2eb6a49"
+      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.2/dev-script-runner_2.3.2_Darwin_arm64.tar.gz"
+      sha256 "3528703031351fa969f758d222d18ed155371ed16cb7e5f97f784fc41bf1429f"
 
       def install
         bin.install "dev-script-runner" => "dev"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.1/dev-script-runner_2.3.1_Darwin_x86_64.tar.gz"
-      sha256 "3e25956a9313f6987100c022e03dc7967ed9f16844c3a0560002ded474e4759d"
+      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.2/dev-script-runner_2.3.2_Darwin_x86_64.tar.gz"
+      sha256 "73c04afcf24299dad8219a54bd0baf9a62949ca86ed44f316e1466e68ed6408e"
+
+      def install
+        bin.install "dev-script-runner" => "dev"
+      end
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm? && !Hardware::CPU.is_64_bit?
+      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.2/dev-script-runner_2.3.2_Linux_armv6.tar.gz"
+      sha256 "81a759038a0e6766d41ccf8e47109dadffbfa3876691b5139c638a77cdf86844"
+
+      def install
+        bin.install "dev-script-runner" => "dev"
+      end
+    end
+    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
+      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.2/dev-script-runner_2.3.2_Linux_arm64.tar.gz"
+      sha256 "37e6f856433ed1848b2e1a6dc514dd6f5222de6b771b25dbaf0e5613de1f7ecb"
+
+      def install
+        bin.install "dev-script-runner" => "dev"
+      end
+    end
+    if Hardware::CPU.intel?
+      url "https://github.com/sandstorm/dev-script-runner/releases/download/v2.3.2/dev-script-runner_2.3.2_Linux_x86_64.tar.gz"
+      sha256 "d47c6ab56bd75a24cac4422cbccd60e8b346437ffea4e1d3eb9ce3953895449a"
 
       def install
         bin.install "dev-script-runner" => "dev"
