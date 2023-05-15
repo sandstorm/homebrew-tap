@@ -5,13 +5,12 @@
 class Drydock < Formula
   desc "Drydock - Docker Debug Tools"
   homepage "https://github.com/sandstorm/drydock"
-  version "3.1.0"
-  depends_on :macos
+  version "3.2.0"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.1.0/drydock_3.1.0_Darwin_arm64.tar.gz"
-      sha256 "26c32d9570cccc996fa8861413dec9170e13e12fe6d202e4be2f38f33bd999d2"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Darwin_arm64.tar.gz"
+      sha256 "af342dd46b1a792ec77be34c2c50a50bbeef246929d8954b89b0b93872daecdb"
 
       def install
         libexec.install Dir["*"]
@@ -19,8 +18,29 @@ class Drydock < Formula
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.1.0/drydock_3.1.0_Darwin_x86_64.tar.gz"
-      sha256 "39d7f991edb75063f65165ff8757f5fdde1779c16a88072cf2d30a634ffb979b"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Darwin_x86_64.tar.gz"
+      sha256 "578898d6df838c62dec7aab082bff03292ff66c441428f16151c6622dab1b702"
+
+      def install
+        libexec.install Dir["*"]
+        bin.write_exec_script libexec/"drydock"
+      end
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Linux_arm64.tar.gz"
+      sha256 "7e0f401a99c3ca7c8a9d9cc62c7892f2c4699bc2f7273a13a83165b0ec0a462a"
+
+      def install
+        libexec.install Dir["*"]
+        bin.write_exec_script libexec/"drydock"
+      end
+    end
+    if Hardware::CPU.intel?
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Linux_x86_64.tar.gz"
+      sha256 "32ab2947d7822738f1bce9f1d4b7849016b00ddcf3d8439c45ea5c810c5c0ccc"
 
       def install
         libexec.install Dir["*"]
