@@ -5,12 +5,12 @@
 class Synco < Formula
   desc "Sandstorm Synco"
   homepage "https://github.com/sandstorm/synco"
-  version "1.2.2"
+  version "1.3.1"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/synco/releases/download/v1.2.2/synco_Darwin_arm64.tar.gz"
-      sha256 "2d944865a9a0c63f86aaa07be8439653e023c14eb6641d986df283a1788dacc3"
+      url "https://github.com/sandstorm/synco/releases/download/v1.3.1/synco_Darwin_arm64.tar.gz"
+      sha256 "36882be9b37f667453088b0c2503fa39d1aa0c62b4e430998b46b057a6481b52"
 
       def install
         libexec.install Dir["*"]
@@ -18,8 +18,8 @@ class Synco < Formula
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/synco/releases/download/v1.2.2/synco_Darwin_x86_64.tar.gz"
-      sha256 "f184bfdfb755b93a9f66c8fadbde2381f92c09e8e89125ea13bb5a8f9263fd15"
+      url "https://github.com/sandstorm/synco/releases/download/v1.3.1/synco_Darwin_x86_64.tar.gz"
+      sha256 "c0aff3dcce2974857c61a58f6f4d4d12ce238954c0872557bb3cc274ba253f8b"
 
       def install
         libexec.install Dir["*"]
@@ -30,8 +30,8 @@ class Synco < Formula
 
   on_linux do
     if Hardware::CPU.arm? && !Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/synco/releases/download/v1.2.2/synco_Linux_armv6.tar.gz"
-      sha256 "af1e36a4800c732058f7286a1afc651faaca75d1da754fc61a2e142220185c69"
+      url "https://github.com/sandstorm/synco/releases/download/v1.3.1/synco_Linux_arm.tar.gz"
+      sha256 "3b150c9bc5f3ee39c44f1b54d93f89cb3cb2e6b3ac6327137732901c939d8c31"
 
       def install
         libexec.install Dir["*"]
@@ -39,8 +39,8 @@ class Synco < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/synco/releases/download/v1.2.2/synco_Linux_arm64.tar.gz"
-      sha256 "aad419fcfb3a46e8b12626721e53fdc758a0748c5b36feb399a5c84cb879224d"
+      url "https://github.com/sandstorm/synco/releases/download/v1.3.1/synco_Linux_arm64.tar.gz"
+      sha256 "f5de9ad424b8f27f197e87a1def3a4b8c5e19a819a84eed5861f43a31b427037"
 
       def install
         libexec.install Dir["*"]
@@ -48,8 +48,8 @@ class Synco < Formula
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/synco/releases/download/v1.2.2/synco_Linux_x86_64.tar.gz"
-      sha256 "93c4265a1b38293aa514db3f2e0f688861e0f2e5cd611cc8331b77fd0e2246fc"
+      url "https://github.com/sandstorm/synco/releases/download/v1.3.1/synco_Linux_x86_64.tar.gz"
+      sha256 "32df11ad38fdd89514593034ecd8b9bb000d9ad74c3bfea6879a05c533f1265c"
 
       def install
         libexec.install Dir["*"]
