@@ -5,20 +5,20 @@
 class SandstormDependencyAnalysis < Formula
   desc "Sandstorm Dependency Analysis"
   homepage "https://github.com/sandstorm/dependency-analysis"
-  version "1.3.1"
+  version "1.4.1"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.3.1/dependency-analysis_1.3.1_Darwin_arm64.tar.gz"
-      sha256 "f4667e46c5d30ab780ece030e6d3a3ab3d41d5e8a2a25e4161b4122434c2d9e6"
+      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.4.1/dependency-analysis_1.4.1_Darwin_arm64.tar.gz"
+      sha256 "626ab183f28e437d4b983c92f035e772c3ca66356aecbdbe812d8830b5ad18db"
 
       def install
         bin.install "sandstorm-dependency-analysis" => "sda"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.3.1/dependency-analysis_1.3.1_Darwin_x86_64.tar.gz"
-      sha256 "7e7b9a105e06f32adaa5db4f77dee1d2edb1e7b686e25afeef0773acdcfd357b"
+      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.4.1/dependency-analysis_1.4.1_Darwin_x86_64.tar.gz"
+      sha256 "a007ce9837a9b14de44f991890bc06e9a0314439336302245c3e81cd92dfa4e3"
 
       def install
         bin.install "sandstorm-dependency-analysis" => "sda"
@@ -28,24 +28,24 @@ class SandstormDependencyAnalysis < Formula
 
   on_linux do
     if Hardware::CPU.arm? && !Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.3.1/dependency-analysis_1.3.1_Linux_armv6.tar.gz"
-      sha256 "14804c928f8e6e8ae33353112023759d1b7d0bbe39a492af86c1fc34c95dd253"
+      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.4.1/dependency-analysis_1.4.1_Linux_armv6.tar.gz"
+      sha256 "e65a327d05e3ff39296948fea54b1c056904a00d94e8d6b9fd3aa39b1a1b31a1"
 
       def install
         bin.install "sandstorm-dependency-analysis" => "sda"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.3.1/dependency-analysis_1.3.1_Linux_arm64.tar.gz"
-      sha256 "a56329bdb92b3a19a92b10b8792425af6af8564c63bd1b379c60e035000b1cfd"
+      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.4.1/dependency-analysis_1.4.1_Linux_arm64.tar.gz"
+      sha256 "64433bf47606061fb90de6a2e238bcbd9d13f9ae3de68395564cd0d986edb0da"
 
       def install
         bin.install "sandstorm-dependency-analysis" => "sda"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.3.1/dependency-analysis_1.3.1_Linux_x86_64.tar.gz"
-      sha256 "463bdeb0e99f769a5ea74a0659a4667c6a62a8d3495865a8ede0c30571aa2cb6"
+      url "https://github.com/sandstorm/dependency-analysis/releases/download/v1.4.1/dependency-analysis_1.4.1_Linux_x86_64.tar.gz"
+      sha256 "dcd8df477bf113837a9bbd536254bd23297b30ab3cfcd60d9e338989d32d39c6"
 
       def install
         bin.install "sandstorm-dependency-analysis" => "sda"
