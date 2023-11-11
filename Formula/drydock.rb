@@ -5,12 +5,12 @@
 class Drydock < Formula
   desc "Drydock - Docker Debug Tools"
   homepage "https://github.com/sandstorm/drydock"
-  version "3.2.0"
+  version "3.2.2"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Darwin_arm64.tar.gz"
-      sha256 "af342dd46b1a792ec77be34c2c50a50bbeef246929d8954b89b0b93872daecdb"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.2/drydock_Darwin_arm64.tar.gz"
+      sha256 "63f950030ba0d75a7981ee93efb433ba944718186e240fd6632506f132a2c110"
 
       def install
         libexec.install Dir["*"]
@@ -18,8 +18,8 @@ class Drydock < Formula
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Darwin_x86_64.tar.gz"
-      sha256 "578898d6df838c62dec7aab082bff03292ff66c441428f16151c6622dab1b702"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.2/drydock_Darwin_x86_64.tar.gz"
+      sha256 "0d1e851d9d2657dc4e8e3135bbb3778077af536d0f5943d8cba8a541d0c9fcdb"
 
       def install
         libexec.install Dir["*"]
@@ -30,8 +30,8 @@ class Drydock < Formula
 
   on_linux do
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Linux_arm64.tar.gz"
-      sha256 "7e0f401a99c3ca7c8a9d9cc62c7892f2c4699bc2f7273a13a83165b0ec0a462a"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.2/drydock_Linux_arm64.tar.gz"
+      sha256 "39fb365b17a4712b69c695a33adf69603dfc6425dc9c671ce33aaec62394a599"
 
       def install
         libexec.install Dir["*"]
@@ -39,8 +39,8 @@ class Drydock < Formula
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.0/drydock_3.2.0_Linux_x86_64.tar.gz"
-      sha256 "32ab2947d7822738f1bce9f1d4b7849016b00ddcf3d8439c45ea5c810c5c0ccc"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.2.2/drydock_Linux_x86_64.tar.gz"
+      sha256 "207b0ece2054daa4437ab50f2a4982b8cf64a8725aca57d67cf081d3ce6be48c"
 
       def install
         libexec.install Dir["*"]
