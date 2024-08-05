@@ -5,27 +5,25 @@
 class Sku < Formula
   desc "Sandstorm Kubernetes Tools"
   homepage "https://github.com/sandstorm/sku"
-  version "1.10.1"
+  version "1.11.0"
   depends_on :macos
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/sku/releases/download/v1.10.1/sku_Darwin_arm64.tar.gz"
-      sha256 "6ee7d03c73553ae539505d4ffb528efd5bdc4351ae1bd482d658b7ea7a27eadf"
+  if Hardware::CPU.intel?
+    url "https://github.com/sandstorm/sku/releases/download/v1.11.0/sku_Darwin_x86_64.tar.gz"
+    sha256 "3688b4b6979320bf144b68eed0f551db5cd71e2b80963e0675c0ccb57904086c"
 
-      def install
-        libexec.install Dir["*"]
-        bin.write_exec_script libexec/"sku"
-      end
+    def install
+      libexec.install Dir["*"]
+      bin.write_exec_script libexec/"sku"
     end
-    if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/sku/releases/download/v1.10.1/sku_Darwin_x86_64.tar.gz"
-      sha256 "419d87b9cd24c58930fde2f4055b8c5ef1e159063d238e499d7e78bc956262af"
+  end
+  if Hardware::CPU.arm?
+    url "https://github.com/sandstorm/sku/releases/download/v1.11.0/sku_Darwin_arm64.tar.gz"
+    sha256 "95b9a2cd143dce4c018b27e9c860c0b98c4b51a833e652746854eec3198c2652"
 
-      def install
-        libexec.install Dir["*"]
-        bin.write_exec_script libexec/"sku"
-      end
+    def install
+      libexec.install Dir["*"]
+      bin.write_exec_script libexec/"sku"
     end
   end
 end
