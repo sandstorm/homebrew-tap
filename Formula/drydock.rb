@@ -5,12 +5,12 @@
 class Drydock < Formula
   desc "Drydock - Docker Debug Tools"
   homepage "https://github.com/sandstorm/drydock"
-  version "3.2.3"
+  version "3.3.0"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.3/drydock_Darwin_x86_64.tar.gz"
-      sha256 "99211c7731b2afaf4fd65d533975c9197728706b337829acbab7380166d91beb"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.3.0/drydock_Darwin_x86_64.tar.gz"
+      sha256 "69f16f93cb227ecee8b3a0f63088c602ef6597a8470caef403eaee04f5a1cab1"
 
       def install
         libexec.install Dir["*"]
@@ -18,8 +18,8 @@ class Drydock < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.3/drydock_Darwin_arm64.tar.gz"
-      sha256 "22102f411759ca6a681dd3eb31b44877582dbd555b572f49a272c3ec2499da26"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.3.0/drydock_Darwin_arm64.tar.gz"
+      sha256 "405759b8cc7b677698766f44d4c227b92e12c5d16185b3f8b657f8619eeeba31"
 
       def install
         libexec.install Dir["*"]
@@ -30,8 +30,8 @@ class Drydock < Formula
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.3/drydock_Linux_x86_64.tar.gz"
-      sha256 "a9ecabf92e96aaf6bae74daf5a51fd503fd2ab8e89295358dfe14e8508902094"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.3.0/drydock_Linux_x86_64.tar.gz"
+      sha256 "2cf77251a3313cd9fc88d03e491f918b8b15d8be3c7fc3f04985af9cde6174ee"
 
       def install
         libexec.install Dir["*"]
@@ -39,8 +39,8 @@ class Drydock < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/drydock/releases/download/v3.2.3/drydock_Linux_arm64.tar.gz"
-      sha256 "8e2e063b81ffcdd49c56630411be974ddb321f73f155c2f2cac1135a5f7f0f60"
+      url "https://github.com/sandstorm/drydock/releases/download/v3.3.0/drydock_Linux_arm64.tar.gz"
+      sha256 "3782262990418013d50ce716e18ac70534a5f3eac8b4558e6abad1d23efd48b3"
 
       def install
         libexec.install Dir["*"]
