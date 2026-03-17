@@ -1,6 +1,16 @@
 # typed: false
 # frozen_string_literal: true
 
+class ClaudeCodeRequirement < Requirement
+  fatal true
+
+  satisfy(build_env: false) { which("claude") }
+
+  def message
+    "Claude Code is required. Please run `brew install --cask claude-code` first."
+  end
+end
+
 class ClaudeSafe < Formula
   desc "Claude Code wrapped with agent-safehouse sandboxing"
   homepage "https://github.com/sandstorm/homebrew-tap"
@@ -10,7 +20,7 @@ class ClaudeSafe < Formula
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
-  depends_on cask: "claude-code"
+  depends_on ClaudeCodeRequirement
 
   def install
     (buildpath/"aliases.zsh").write <<~EOS
