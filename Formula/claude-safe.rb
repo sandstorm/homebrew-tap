@@ -51,6 +51,9 @@ class ClaudeSafe < Formula
     EOS
 
     (etc/"claude-safe").install "aliases.zsh"
+
+    # Homebrew requires something in prefix to not consider installation empty
+    (prefix/"README").write "claude-safe: Claude Code with agent-safehouse sandboxing\n"
   end
 
   def caveats
