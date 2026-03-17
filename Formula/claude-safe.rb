@@ -23,6 +23,13 @@ class ClaudeSafe < Formula
   depends_on ClaudeCodeRequirement
 
   def install
+    (buildpath/"claude-safe").write <<~EOS
+      #!/bin/bash
+      exec env SAFEHOUSE_WORKDIR=. safehouse claude "$@"
+    EOS
+
+    bin.install "claude-safe"
+
     (buildpath/"aliases.zsh").write <<~EOS
       # Managed by brew install sandstorm/tap/claude-safe — do not edit manually
       # This file is updated automatically when the formula is upgraded.
@@ -37,10 +44,6 @@ class ClaudeSafe < Formula
         return 1
       }
 
-      claude-safe() {
-        SAFEHOUSE_WORKDIR=. safehouse claude "$@"
-      }
-
       claude-unsafe() {
         if [[ -n "$_claude_original" ]]; then
           "$_claude_original" "$@"
@@ -51,9 +54,6 @@ class ClaudeSafe < Formula
     EOS
 
     (etc/"claude-safe").install "aliases.zsh"
-
-    # Homebrew requires something in prefix to not consider installation empty
-    (prefix/"README").write "claude-safe: Claude Code with agent-safehouse sandboxing\n"
   end
 
   def caveats
