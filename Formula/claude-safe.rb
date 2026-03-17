@@ -14,8 +14,8 @@ end
 class ClaudeSafe < Formula
   desc "Claude Code wrapped with agent-safehouse sandboxing"
   homepage "https://github.com/sandstorm/homebrew-tap"
-  url "file:///dev/null"
-  sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
+  sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
   version "1.0.0"
 
   depends_on :macos
