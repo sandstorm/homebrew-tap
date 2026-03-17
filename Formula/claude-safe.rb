@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "1.3.0"
+  version "1.4.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -67,7 +67,7 @@ class ClaudeSafe < Formula
       }
     EOS
 
-    (share/"claude-safe").install "aliases.zsh"
+    share.install "aliases.zsh"
   end
 
   def caveats
