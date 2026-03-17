@@ -10,7 +10,7 @@ class ClaudeSafe < Formula
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
-  depends_on "claude-code"
+  depends_on cask: "claude-code"
 
   def install
     (buildpath/"aliases.zsh").write <<~EOS
