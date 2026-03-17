@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "1.0.0"
+  version "1.1.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -25,7 +25,21 @@ class ClaudeSafe < Formula
   def install
     (buildpath/"claude-safe").write <<~EOS
       #!/bin/bash
-      exec env SAFEHOUSE_WORKDIR=. safehouse claude "$@"
+      # Usage: claude-safe [safehouse-args...]
+      #        claude-safe [safehouse-args] -- [claude-args...]
+      safehouse_args=()
+      claude_args=()
+      found_sep=false
+      for arg in "$@"; do
+        if ! $found_sep && [[ "$arg" == "--" ]]; then
+          found_sep=true
+        elif $found_sep; then
+          claude_args+=("$arg")
+        else
+          safehouse_args+=("$arg")
+        fi
+      done
+      exec env SAFEHOUSE_WORKDIR=. safehouse "${safehouse_args[@]}" -- claude "${claude_args[@]}"
     EOS
 
     bin.install "claude-safe"
