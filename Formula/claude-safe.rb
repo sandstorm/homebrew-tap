@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "1.2.0"
+  version "1.3.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -74,7 +74,7 @@ class ClaudeSafe < Formula
     <<~EOS
       Add this line to your ~/.zshrc:
 
-        source "#{share}/claude-safe/aliases.zsh"
+        source "#{share}/aliases.zsh"
 
       Then restart your shell or run: source ~/.zshrc
 
@@ -86,6 +86,6 @@ class ClaudeSafe < Formula
   end
 
   test do
-    assert_predicate share/"claude-safe/aliases.zsh", :exist?
+    assert_predicate share/"aliases.zsh", :exist?
   end
 end
