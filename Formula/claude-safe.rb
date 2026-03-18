@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "1.7.0"
+  version "1.7.1"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -70,7 +70,7 @@ class ClaudeSafe < Formula
           safehouse_args+=("$arg")
         fi
       done
-      exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="/opt/homebrew/Cellar/claude-safe/1.6.0/share/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- claude "${claude_args[@]}"
+      exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- claude "${claude_args[@]}"
 
       EOS
 
