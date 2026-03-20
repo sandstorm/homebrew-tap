@@ -291,6 +291,43 @@ class ClaudeSafe < Formula
 
   end
 
+  def post_install
+    skills = [
+      { repo: "mattpocock/skills", ref: "b2039ab896a01ebcc539704f69974f7bcdfb1226", subdir: "tdd" },
+    ]
+
+    skills.each do |s|
+      owner, reponame = s[:repo].split("/")
+      subdir   = s[:subdir]
+      skill_name = File.basename(subdir)
+      clone_dir  = File.expand_path("~/.claude/.skills/#{owner}-#{reponame}")
+      link       = File.expand_path("~/.claude/skills/#{skill_name}")
+
+      if Dir.exist?(File.join(clone_dir, ".git"))
+        ohai "Fetching #{s[:repo]} ..."
+        system "git", "-C", clone_dir, "fetch", "--all", "--tags", "--quiet"
+      else
+        ohai "Cloning #{s[:repo]} ..."
+        system "git", "clone", "https://github.com/#{s[:repo]}", clone_dir
+      end
+
+      system "git", "-C", clone_dir, "checkout", s[:ref], "--quiet"
+
+      target = File.join(clone_dir, subdir)
+      unless Dir.exist?(target)
+        opoo "Subdir '#{subdir}' not found in #{clone_dir}, skipping."
+        next
+      end
+
+      FileUtils.mkdir_p(File.expand_path("~/.claude/skills"))
+      File.delete(link) if File.symlink?(link)
+      File.symlink(target, link)
+
+      sha = `git -C #{clone_dir} rev-parse --short HEAD`.strip
+      ohai "#{skill_name} installed: #{link} -> #{target} @ #{sha}"
+    end
+  end
+
   def caveats
     <<~EOS
       Run the following two commands to enable claude-safe wrapper
