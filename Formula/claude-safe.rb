@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "1.7.1"
+  version "1.8.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -107,6 +107,7 @@ class ClaudeSafe < Formula
       ;; - deny .git - reads and writes
       ;; - deny bw (Bitwarden CLI) — execution and reads
       ;; - deny rbw (inofficial Bitwarden CLI) — execution and reads
+      ;; - allow OrbStack binary
 
       (version 1)
 
@@ -198,6 +199,16 @@ class ClaudeSafe < Formula
 
       (deny file-read*
         (regex #"(^|/)rbw$")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; allow OrbStack binary
+      ;;
+      ;; the actual usage is restricted with --enable=docker (which already supports the OrbStack socket)
+      ;; ---------------------------------------------------------------------------
+
+      (allow process-exec* file-read*
+        (subpath "/Applications/OrbStack.app/")
       )
     EOS
 
