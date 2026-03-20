@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.0.2"
+  version "2.0.3"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -121,6 +121,44 @@ class ClaudeSafe < Formula
           safehouse_args+=("$arg")
         fi
       done
+      # ---------------------------------------------------------------------------
+      # Install Claude Code skills (idempotent — skips if symlink already exists)
+      # ---------------------------------------------------------------------------
+      _claude_install_skill() {
+        local repo="$1" ref="$2" subdir="$3"
+        local owner="${repo%%/*}" reponame="${repo##*/}"
+        local skill_name
+        skill_name="$(basename "$subdir")"
+        local clone_dir="${HOME}/.claude/.skills/${owner}-${reponame}"
+        local link="${HOME}/.claude/skills/${skill_name}"
+
+        [ -L "$link" ] && return 0  # already installed
+
+        if [ ! -d "$clone_dir/.git" ]; then
+          echo "📦 Installing skill: $skill_name ..." >&2
+          git clone "https://github.com/${repo}" "$clone_dir" --quiet
+        else
+          git -C "$clone_dir" fetch --all --tags --quiet
+        fi
+
+        git -C "$clone_dir" checkout "$ref" --quiet
+
+        local target="$clone_dir/$subdir"
+        if [ ! -d "$target" ]; then
+          echo "⚠️  Skill subdir '$subdir' not found in $clone_dir, skipping." >&2
+          return 1
+        fi
+
+        mkdir -p "${HOME}/.claude/skills"
+        ln -s "$target" "$link"
+
+        local sha
+        sha=$(git -C "$clone_dir" rev-parse --short HEAD)
+        echo "✅ Skill $skill_name installed: $link -> $target @ $sha" >&2
+      }
+
+      _claude_install_skill "mattpocock/skills" "b2039ab896a01ebcc539704f69974f7bcdfb1226" "tdd"
+
       exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- claude "${claude_args[@]}"
 
       EOS
@@ -289,45 +327,6 @@ class ClaudeSafe < Formula
 
     (share/"profiles").install Dir["profiles/*"]
 
-  end
-
-  def post_install
-    skills = [
-      { repo: "mattpocock/skills", ref: "b2039ab896a01ebcc539704f69974f7bcdfb1226", subdir: "tdd" },
-    ]
-
-    skills.each do |s|
-      owner, reponame = s[:repo].split("/")
-      subdir   = s[:subdir]
-      skill_name = File.basename(subdir)
-      clone_dir  = File.expand_path("~/.claude/.skills/#{owner}-#{reponame}")
-      link       = File.expand_path("~/.claude/skills/#{skill_name}")
-
-      system "mkdir", "-p", File.dirname(clone_dir)
-
-      if Dir.exist?(File.join(clone_dir, ".git"))
-        ohai "Fetching #{s[:repo]} ..."
-        system "git", "-C", clone_dir, "fetch", "--all", "--tags", "--quiet"
-      else
-        ohai "Cloning #{s[:repo]} ..."
-        system "git", "clone", "https://github.com/#{s[:repo]}", clone_dir
-      end
-
-      system "git", "-C", clone_dir, "checkout", s[:ref], "--quiet"
-
-      target = File.join(clone_dir, subdir)
-      unless Dir.exist?(target)
-        opoo "Subdir '#{subdir}' not found in #{clone_dir}, skipping."
-        next
-      end
-
-      FileUtils.mkdir_p(File.expand_path("~/.claude/skills"))
-      File.delete(link) if File.symlink?(link)
-      File.symlink(target, link)
-
-      sha = `git -C #{clone_dir} rev-parse --short HEAD`.strip
-      ohai "#{skill_name} installed: #{link} -> #{target} @ #{sha}"
-    end
   end
 
   def caveats
