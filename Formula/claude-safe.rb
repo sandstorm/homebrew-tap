@@ -26,11 +26,17 @@ class ClaudeSafe < Formula
     (buildpath/"claude-safe").write <<~EOS
       #!/bin/bash
 
+      # Custom profiles installed alongside this script.
+      # Names listed here are mapped to --append-profile=PROFILES_DIR/NAME.sb
+      # Everything else is passed through to safehouse as --enable=NAME.
+      CUSTOM_PROFILES=(env)
+      PROFILES_DIR="#{share}/profiles"
+
       usage() {
         cat <<EOF
       Usage: $(basename "$0") [safehouse-args]
             $(basename "$0") [safehouse-args] -- [claude-args]
-      
+
       This runs: safehouse [safehouse-args] -- claude [claude-args]
       and adds additional default settings.
 
@@ -40,6 +46,10 @@ class ClaudeSafe < Formula
         additional directory claude can read file content from
       * claude-safe --enable=docker
         claude may run docker commands, eg docker ps
+      * claude-safe --enable=docker,env
+        enable docker and custom env profile
+      * claude-safe --enable docker,env
+        same as above (space form)
 
       # Show help for safehouse
 
@@ -51,17 +61,58 @@ class ClaudeSafe < Formula
 
       EOF
       }
-      
+
       for arg in "$@"; do
         case "$arg" in
           -h|--help) usage; exit 0 ;;
         esac
       done
 
+      # Expand a comma-separated enable value.
+      # Custom names  → --append-profile=PROFILES_DIR/NAME.sb (null-delimited output)
+      # Other names   → --enable=NAME
+      _expand_enable() {
+        local value="$1"
+        local name
+        local IFS=','
+        for name in $value; do
+          local p is_custom=false
+          for p in "${CUSTOM_PROFILES[@]}"; do
+            [[ "$p" == "$name" ]] && is_custom=true && break
+          done
+          if $is_custom; then
+            printf '%s\\0' "--append-profile=${PROFILES_DIR}/${name}.sb"
+          else
+            printf '%s\\0' "--enable=${name}"
+          fi
+        done
+      }
+
+      # Pre-process args: expand --enable=a,b and --enable a,b forms.
+      expanded=()
+      args=("$@")
+      i=0
+      while [[ $i -lt ${#args[@]} ]]; do
+        arg="${args[$i]}"
+        if [[ "$arg" == --enable=* ]]; then
+          while IFS= read -r -d '' token; do
+            expanded+=("$token")
+          done < <(_expand_enable "${arg#--enable=}")
+        elif [[ "$arg" == "--enable" && $((i+1)) -lt ${#args[@]} ]]; then
+          ((i++))
+          while IFS= read -r -d '' token; do
+            expanded+=("$token")
+          done < <(_expand_enable "${args[$i]}")
+        else
+          expanded+=("$arg")
+        fi
+        ((i++))
+      done
+
       safehouse_args=()
       claude_args=()
       found_sep=false
-      for arg in "$@"; do
+      for arg in "${expanded[@]}"; do
         if ! $found_sep && [[ "$arg" == "--" ]]; then
           found_sep=true
         elif $found_sep; then
@@ -213,6 +264,30 @@ class ClaudeSafe < Formula
     EOS
 
     share.install "sandstorm-additional-claude-safe-guards.sb"
+
+    # Custom profiles — activated via --enable=NAME
+    (buildpath/"profiles/env.sb").write <<~EOS
+      ;; Custom sandbox profile: env
+      ;;
+      ;; Add sandbox rules here for the 'env' profile.
+      ;; Activated via: claude-safe --enable=env
+      ;;
+      ;; NOTE: macOS sandbox-exec uses first-match-wins ordering.
+      ;; Rules in this file are appended AFTER the base profiles, so they
+      ;; CANNOT override denies already established in the base profile.
+      ;; Only add new allowances for things not yet covered by the base.
+      ;;
+      ;; Example — allow reading a specific secrets directory:
+      ;;
+      ;;   (allow file-read*
+      ;;     (subpath "/Users/me/.config/myapp/")
+      ;;   )
+
+      (version 1)
+
+    EOS
+
+    (share/"profiles").install Dir["profiles/*"]
 
   end
 
