@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "1.8.0"
+  version "1.9.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -269,21 +269,21 @@ class ClaudeSafe < Formula
     (buildpath/"profiles/env.sb").write <<~EOS
       ;; Custom sandbox profile: env
       ;;
-      ;; Add sandbox rules here for the 'env' profile.
+      ;; Re-enables access to things blocked by sandstorm-additional-claude-safe-guards.sb:
+      ;;   - .env files (read + write)
+      ;;
       ;; Activated via: claude-safe --enable=env
-      ;;
-      ;; NOTE: macOS sandbox-exec uses first-match-wins ordering.
-      ;; Rules in this file are appended AFTER the base profiles, so they
-      ;; CANNOT override denies already established in the base profile.
-      ;; Only add new allowances for things not yet covered by the base.
-      ;;
-      ;; Example — allow reading a specific secrets directory:
-      ;;
-      ;;   (allow file-read*
-      ;;     (subpath "/Users/me/.config/myapp/")
-      ;;   )
 
       (version 1)
+
+      ;; Re-allow .env files
+      (allow file-read*
+        (regex #"/.env([._][^/]*)?$")
+      )
+      (allow file-write*
+        (regex #"/.env([._][^/]*)?$")
+      )
+
 
     EOS
 
