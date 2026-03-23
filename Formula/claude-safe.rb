@@ -16,7 +16,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.0.3"
+  version "2.1.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -29,7 +29,7 @@ class ClaudeSafe < Formula
       # Custom profiles installed alongside this script.
       # Names listed here are mapped to --append-profile=PROFILES_DIR/NAME.sb
       # Everything else is passed through to safehouse as --enable=NAME.
-      CUSTOM_PROFILES=(env)
+      CUSTOM_PROFILES=(env git flutter)
       PROFILES_DIR="#{share}/profiles"
 
       usage() {
@@ -39,6 +39,10 @@ class ClaudeSafe < Formula
 
       This runs: safehouse [safehouse-args] -- claude [claude-args]
       and adds additional default settings.
+
+      # Custom profiles
+
+      ${CUSTOM_PROFILES[@]}
 
       # Examples
 
@@ -217,13 +221,7 @@ class ClaudeSafe < Formula
       ;; component starts with ".env" — with or without a suffix.
       ;; ---------------------------------------------------------------------------
 
-      ;; Block reads (file-read-data + file-read-metadata)
-      (deny file-read*
-        (regex #"/\.env([._][^/]*)?$")
-      )
-
-      ;; Block writes and truncation
-      (deny file-write*
+      (deny file-read* file-write*
         (regex #"/\.env([._][^/]*)?$")
       )
 
@@ -242,13 +240,7 @@ class ClaudeSafe < Formula
       ;; component starts with ".env" — with or without a suffix.
       ;; ---------------------------------------------------------------------------
 
-      ;; Block reads (file-read-data + file-read-metadata)
-      (deny file-read*
-        (regex #"/\.git/")
-      )
-
-      ;; Block writes and truncation
-      (deny file-write*
+      (deny file-read* file-write*
         (regex #"/\.git/")
       )
 
@@ -263,11 +255,7 @@ class ClaudeSafe < Formula
       ;; itself (e.g. to inspect or copy it).
       ;; ---------------------------------------------------------------------------
 
-      (deny process-exec*
-        (regex #"(^|/)bw$")
-      )
-
-      (deny file-read*
+      (deny process-exec* file-read*
         (regex #"(^|/)bw$")
       )
 
@@ -282,14 +270,10 @@ class ClaudeSafe < Formula
       ;; itself (e.g. to inspect or copy it).
       ;; ---------------------------------------------------------------------------
 
-      (deny process-exec*
+      (deny process-exec* file-read*
         (regex #"(^|/)rbw$")
       )
-
-      (deny file-read*
-        (regex #"(^|/)rbw$")
-      )
-
+      
       ;; ---------------------------------------------------------------------------
       ;; allow OrbStack binary
       ;;
@@ -315,14 +299,56 @@ class ClaudeSafe < Formula
       (version 1)
 
       ;; Re-allow .env files
+      (allow file-read* file-write*
+        (regex #"/.env([._][^/]*)?$")
+      )
+    EOS
+
+    (buildpath/"profiles/git.sb").write <<~EOS
+      ;; Custom sandbox profile: git
+      ;;
+      ;; Re-enables access to things blocked by sandstorm-additional-claude-safe-guards.sb:
+      ;;   - .git folder (read + write)
+      ;;
+      ;; Activated via: claude-safe --enable=git
+
+      (version 1)
+
+      (allow file-read* file-write*
+        (regex #"/\.git/")
+      )
+    EOS
+
+    (buildpath/"profiles/flutter.sb").write <<~EOS
+      ;; Custom sandbox profile: flutter
+      ;;
+      ;; Re-enables access to things blocked by sandstorm-additional-claude-safe-guards.sb:
+      ;;   - .git folder (read + write)
+      ;; Re-enables access to things blockes by safehouse defaults:
+      ;;   - $HOME/.config/flutter (read + write)
+      ;;   - $HOME/.dart-tool (read + write)
+      ;;   - $HOME/.pub-cache (read + write)
+      ;;   - $HOME/.dartServer (read + write)
+      ;;   - $HOME/.local/share/mise (read + write)
+      ;;   - $HOME/.android (read + write)
+      ;;   - /opt/homebrew/share/android-commandlinetools (read)
+      ;;
+      ;; Activated via: claude-safe --enable=flutter
+
+      (version 1)
+
       (allow file-read*
-        (regex #"/.env([._][^/]*)?$")
+        (regex #"/\.git/")
+        (regex #"^/opt/homebrew/share/android-commandlinetools/") ;; --add-dirs-ro=/opt/homebrew/share/android-commandlinetools
       )
-      (allow file-write*
-        (regex #"/.env([._][^/]*)?$")
+      (allow file-read* file-write*
+          (home-subpath "/.config/flutter")         ;; --add-dirs=$HOME/.config/flutter
+          (home-subpath "/.dart-tool")              ;; --add-dirs=$HOME/.dart-tool
+          (home-subpath "/.pub-cache")              ;; --add-dirs=$HOME/.pub-cache
+          (home-subpath "/.dartServer")             ;; --add-dirs=$HOME/.dartServer
+          (home-subpath "/.local/share/mise")       ;; --add-dirs=$HOME/.local/share/mise
+          (home-subpath "/.android")                ;; --add-dirs=$HOME/.android
       )
-
-
     EOS
 
     (share/"profiles").install Dir["profiles/*"]
