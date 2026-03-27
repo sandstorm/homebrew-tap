@@ -11,16 +11,27 @@ class ClaudeCodeRequirement < Requirement
   end
 end
 
+class VibeRequirement < Requirement
+  fatal false
+
+  satisfy(build_env: false) { which("vibe") }
+
+  def message
+    "Vibe (Mistral coding CLI) is not installed. To use `vibe-safe`, run `brew install mistral-vibe` first."
+  end
+end
+
 class ClaudeSafe < Formula
   desc "Claude Code wrapped with agent-safehouse sandboxing"
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.1.0"
+  version "2.2.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
   depends_on ClaudeCodeRequirement
+  depends_on VibeRequirement => :optional
 
   def install
     (buildpath/"claude-safe").write <<~EOS
@@ -29,7 +40,7 @@ class ClaudeSafe < Formula
       # Custom profiles installed alongside this script.
       # Names listed here are mapped to --append-profile=PROFILES_DIR/NAME.sb
       # Everything else is passed through to safehouse as --enable=NAME.
-      CUSTOM_PROFILES=(env git flutter)
+      CUSTOM_PROFILES=(env git flutter mistral)
       PROFILES_DIR="#{share}/profiles"
 
       usage() {
@@ -71,6 +82,27 @@ class ClaudeSafe < Formula
           -h|--help) usage; exit 0 ;;
         esac
       done
+
+      # Detect --mistral flag and strip it from the arg list
+      cmd="claude"
+      _filtered=()
+      for arg in "$@"; do
+        if [[ "$arg" == "--mistral" ]]; then
+          cmd="vibe"
+        else
+          _filtered+=("$arg")
+        fi
+      done
+      set -- "${_filtered[@]}"
+
+      if [[ "$cmd" == "vibe" ]] && ! command -v vibe &>/dev/null; then
+        echo "Error: vibe (Mistral CLI) is not installed. Run: brew install mistral-vibe" >&2
+        exit 1
+      fi
+
+      if [[ "$cmd" == "vibe" ]]; then
+        set -- "--enable=mistral" "$@"
+      fi
 
       # Expand a comma-separated enable value.
       # Custom names  → --append-profile=PROFILES_DIR/NAME.sb (null-delimited output)
@@ -161,13 +193,22 @@ class ClaudeSafe < Formula
         echo "✅ Skill $skill_name installed: $link -> $target @ $sha" >&2
       }
 
-      _claude_install_skill "mattpocock/skills" "b2039ab896a01ebcc539704f69974f7bcdfb1226" "tdd"
+      if [[ "$cmd" == "claude" ]]; then
+        _claude_install_skill "mattpocock/skills" "b2039ab896a01ebcc539704f69974f7bcdfb1226" "tdd"
+      fi
 
-      exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- claude "${claude_args[@]}"
+      exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- "$cmd" "${claude_args[@]}"
 
       EOS
 
     bin.install "claude-safe"
+
+    (buildpath/"vibe-safe").write <<~EOS
+      #!/bin/bash
+      exec "#{bin}/claude-safe" --mistral "$@"
+    EOS
+
+    bin.install "vibe-safe"
 
     (buildpath/"aliases.zsh").write <<~EOS
       # Managed by brew install sandstorm/tap/claude-safe — do not edit manually
@@ -188,6 +229,24 @@ class ClaudeSafe < Formula
           "$_claude_original" "$@"
         else
           command claude "$@"
+        fi
+      }
+
+      # Save original vibe path before overriding
+      if command -v vibe &>/dev/null; then
+        _vibe_original="$(command -v vibe)"
+      fi
+
+      vibe() {
+        echo "⚠️  Use 'vibe-safe' for sandboxed Vibe (recommended) or 'vibe-unsafe' for unrestricted access." >&2
+        return 1
+      }
+
+      vibe-unsafe() {
+        if [[ -n "$_vibe_original" ]]; then
+          "$_vibe_original" "$@"
+        else
+          command vibe "$@"
         fi
       }
     EOS
@@ -351,6 +410,21 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/mistral.sb").write <<~EOS
+      ;; Custom sandbox profile: mistral
+      ;;
+      ;; Re-enables access to things blocked by safehouse defaults:
+      ;;   - $HOME/.vibe (read + write)
+      ;;
+      ;; Activated automatically when using --mistral / vibe-safe
+
+      (version 1)
+
+      (allow file-read* file-write*
+        (home-subpath "/.vibe")
+      )
+    EOS
+
     (share/"profiles").install Dir["profiles/*"]
 
   end
@@ -363,9 +437,13 @@ class ClaudeSafe < Formula
         source "#{share}/aliases.zsh"
 
       Available commands:
-        claude       → shows a warning (use claude-safe instead)
-        claude-safe  → runs Claude inside agent-safehouse sandbox
+        claude        → shows a warning (use claude-safe instead)
+        claude-safe   → runs Claude inside agent-safehouse sandbox
         claude-unsafe → runs Claude without sandboxing
+        vibe          → shows a warning (use vibe-safe instead)
+        vibe-safe     → runs Vibe/Mistral inside agent-safehouse sandbox
+        vibe-unsafe   → runs Vibe/Mistral without sandboxing
+
     EOS
   end
 
