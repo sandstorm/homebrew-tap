@@ -26,7 +26,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.2.0"
+  version "2.3.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -45,34 +45,59 @@ class ClaudeSafe < Formula
 
       usage() {
         cat <<EOF
-      Usage: $(basename "$0") [safehouse-args]
-            $(basename "$0") [safehouse-args] -- [claude-args]
+      Usage: $(basename "$0") [options] [-- claude-args...]
+             vibe-safe   [options] [-- vibe-args...]
 
-      This runs: safehouse [safehouse-args] -- claude [claude-args]
-      and adds additional default settings.
+      WHAT CLAUDE-SAFE DOES
+        Runs Claude Code (or Vibe for Mistral Code) inside an agent-safehouse sandbox.
+        By default, the agent can ONLY read/write the current directory.
 
-      # Custom profiles
+      DEFAULT RESTRICTIONS (Sandstorm policy)
+        .env files        blocked (read+write)   re-enable: --enable=env
+        .git folder       blocked (read+write)   re-enable: --enable=git
+        bw / rbw          blocked (exec+read)    Bitwarden CLIs
 
-      ${CUSTOM_PROFILES[@]}
+      CUSTOM PROFILES (claude-safe specific)
+        --enable=env        Re-allow .env file access
+        --enable=git        Re-allow .git folder access
+        --enable=flutter    Flutter/Dart toolchain + .git access
+        --enable=mistral    Vibe config (~/.vibe) — auto-enabled by vibe-safe
 
-      # Examples
+      SAFEHOUSE FEATURES (pass-through, comma-separated)
+        --enable=FEATURES   1password, agent-browser, browser-native-messaging,
+                            chromium-full, chromium-headless, cleanshot, clipboard,
+                            cloud-credentials, cloud-storage, docker, electron,
+                            keychain, kubectl, lldb, macos-gui, microphone,
+                            playwright-chrome, process-control, shell-init,
+                            spotlight, ssh, vscode, xcode,
+                            all-agents, all-apps, wide-read
 
-      * claude-safe --add-dirs-ro=../../Packages
-        additional directory claude can read file content from
-      * claude-safe --enable=docker
-        claude may run docker commands, eg docker ps
-      * claude-safe --enable=docker,env
-        enable docker and custom env profile
-      * claude-safe --enable docker,env
-        same as above (space form)
+      DIRECTORY ACCESS
+        --add-dirs-ro=PATHS   Colon-separated read-only paths
+        --add-dirs=PATHS      Colon-separated read/write paths
+        --workdir=DIR         Override working directory (default: .)
 
-      # Show help for safehouse
+      ENVIRONMENT
+        --env                 Pass full host environment to agent
+        --env=FILE            Source FILE for env vars (bash syntax)
+        --env-pass=NAMES      Comma-separated env var names to pass through
 
-      Run: safehouse -h
+      OTHER SAFEHOUSE OPTIONS
+        --append-profile=PATH Additional sandbox profile file
+        --trust-workdir-config Load .safehouse from workdir
+        --explain             Print effective grants summary to stderr
+        --stdout              Print policy text (don't execute)
 
-      ## Show help for claude
+      EXAMPLES
+        claude-safe                           Basic sandboxed Claude
+        claude-safe --enable=docker           Allow Docker commands
+        claude-safe --enable=docker,env       Docker + .env access
+        claude-safe --add-dirs-ro=../shared   Read access to sibling dir
+        claude-safe -- --resume               Pass --resume to Claude
 
-      Run: claude-unsafe -h
+      MORE INFO
+        safehouse -h          Full safehouse documentation
+        claude-unsafe -h      Claude without sandbox
 
       EOF
       }
@@ -427,6 +452,91 @@ class ClaudeSafe < Formula
 
     (share/"profiles").install Dir["profiles/*"]
 
+    # Zsh completion for claude-safe
+    (buildpath/"_claude-safe").write <<~ZSH
+      #compdef claude-safe
+
+      # All features accepted by --enable (custom + safehouse built-in)
+      local -a _claude_safe_features=(
+        'env:Re-allow .env file access'
+        'git:Re-allow .git folder access'
+        'flutter:Flutter/Dart toolchain + .git access'
+        'mistral:Vibe config (~/.vibe)'
+        '1password:1Password integration'
+        'agent-browser:Agent browser (implies chromium)'
+        'browser-native-messaging:Browser native messaging'
+        'chromium-full:Full Chromium access (implies headless)'
+        'chromium-headless:Headless Chromium'
+        'cleanshot:CleanShot access'
+        'clipboard:Clipboard access'
+        'cloud-credentials:Cloud credential files'
+        'cloud-storage:Cloud storage access'
+        'docker:Docker commands and socket'
+        'electron:Electron apps (implies macos-gui)'
+        'keychain:Keychain access'
+        'kubectl:Kubernetes CLI'
+        'lldb:LLDB debugger (implies process-control)'
+        'macos-gui:macOS GUI frameworks'
+        'microphone:Microphone access'
+        'playwright-chrome:Playwright Chrome (implies chromium)'
+        'process-control:Process enumeration/signalling'
+        'shell-init:Shell startup file reads'
+        'spotlight:Spotlight search'
+        'ssh:SSH agent and keys'
+        'vscode:VS Code integration'
+        'xcode:Xcode developer tools'
+        'all-agents:All agent profiles'
+        'all-apps:All app profiles'
+        'wide-read:Read-only visibility across /'
+      )
+
+      # Handle comma-separated --enable values
+      _claude_safe_enable() {
+        # Get text after last comma (or full text if no comma)
+        local prefix="${IPREFIX}"
+        local -a already=("${(@s:,:)PREFIX}")
+        if (( ${#already} > 1 )); then
+          # There are commas — complete after the last one
+          local done="${(j:,:)already[1,-2]}"
+          IPREFIX="${prefix}${done},"
+          PREFIX="${already[-1]}"
+        fi
+        _describe -t features 'feature' _claude_safe_features
+      }
+
+      _arguments -s -S \\
+        '(-h --help)'{-h,--help}'[Show help]' \\
+        '*--enable=[Enable features]:feature:_claude_safe_enable' \\
+        '*--enable[Enable features (space form)]: :_claude_safe_enable' \\
+        '--env=-[Pass environment]::env file:_files' \\
+        '*--env-pass=[Pass env vars]:variable names: ' \\
+        '*--add-dirs-ro=[Read-only paths]:directories:_files -/' \\
+        '*--add-dirs=[Read/write paths]:directories:_files -/' \\
+        '--workdir=[Working directory]:directory:_files -/' \\
+        '*--append-profile=[Additional sandbox profile]:profile:_files -g "*.sb"' \\
+        '--trust-workdir-config[Load .safehouse from workdir]' \\
+        '--explain[Print effective grants summary]' \\
+        '--stdout[Print policy text to stdout]' \\
+        '--mistral[Use Vibe/Mistral instead of Claude]' \\
+        '(-)--[Stop processing safehouse args]' \\
+        '*::: :->cmd_args' && return
+
+      # After --, no completion (claude/vibe handles its own args)
+      if [[ "$state" == cmd_args ]]; then
+        _default
+      fi
+    ZSH
+
+    zsh_completion.install "_claude-safe"
+
+    # Zsh completion for vibe-safe (delegates to claude-safe)
+    (buildpath/"_vibe-safe").write <<~ZSH
+      #compdef vibe-safe
+      _claude-safe "$@"
+    ZSH
+
+    zsh_completion.install "_vibe-safe"
+
   end
 
   def caveats
@@ -435,6 +545,8 @@ class ClaudeSafe < Formula
 
         echo 'source "#{share}/aliases.zsh"' >> ~/.zshrc
         source "#{share}/aliases.zsh"
+
+      Zsh completions are installed automatically (restart your shell or run compinit).
 
       Available commands:
         claude        → shows a warning (use claude-safe instead)
