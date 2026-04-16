@@ -1,37 +1,15 @@
 # typed: false
 # frozen_string_literal: true
 
-class ClaudeCodeRequirement < Requirement
-  fatal true
-
-  satisfy(build_env: false) { which("claude") }
-
-  def message
-    "Claude Code is required. Please run `brew install --cask claude-code` first."
-  end
-end
-
-class VibeRequirement < Requirement
-  fatal false
-
-  satisfy(build_env: false) { which("vibe") }
-
-  def message
-    "Vibe (Mistral coding CLI) is not installed. To use `vibe-safe`, run `brew install mistral-vibe` first."
-  end
-end
-
 class ClaudeSafe < Formula
   desc "Claude Code wrapped with agent-safehouse sandboxing"
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.4.0"
+  version "2.4.1"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
-  depends_on ClaudeCodeRequirement
-  depends_on VibeRequirement => :optional
 
   def install
     (buildpath/"claude-safe").write <<~EOS
@@ -590,6 +568,10 @@ class ClaudeSafe < Formula
         source "#{share}/aliases.zsh"
 
       Zsh completions are installed automatically (restart your shell or run compinit).
+
+      Prerequisites:
+        Claude Code:  brew install --cask claude-code
+        Vibe/Mistral: brew install mistral-vibe (optional)
 
       Available commands:
         claude        → shows a warning (use claude-safe instead)
