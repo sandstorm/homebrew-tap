@@ -26,7 +26,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.3.0"
+  version "2.4.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -40,7 +40,7 @@ class ClaudeSafe < Formula
       # Custom profiles installed alongside this script.
       # Names listed here are mapped to --append-profile=PROFILES_DIR/NAME.sb
       # Everything else is passed through to safehouse as --enable=NAME.
-      CUSTOM_PROFILES=(env git flutter mistral)
+      CUSTOM_PROFILES=(env git flutter mistral vault)
       PROFILES_DIR="#{share}/profiles"
 
       usage() {
@@ -55,6 +55,7 @@ class ClaudeSafe < Formula
       DEFAULT RESTRICTIONS (Sandstorm policy)
         .env files        blocked (read+write)   re-enable: --enable=env
         .git folder       blocked (read+write)   re-enable: --enable=git
+        .vault files      blocked (read+write)   re-enable: --enable=vault
         bw / rbw          blocked (exec+read)    Bitwarden CLIs
 
       CUSTOM PROFILES (claude-safe specific)
@@ -62,6 +63,7 @@ class ClaudeSafe < Formula
         --enable=git        Re-allow .git folder access
         --enable=flutter    Flutter/Dart toolchain + .git access
         --enable=mistral    Vibe config (~/.vibe) — auto-enabled by vibe-safe
+        --enable=vault      Re-allow .vault file access
 
       SAFEHOUSE FEATURES (pass-through, comma-separated)
         --enable=FEATURES   1password, agent-browser, browser-native-messaging,
@@ -282,6 +284,7 @@ class ClaudeSafe < Formula
       ;; safehouse profile with additional restriction for claude
       ;; - deny .env files — reads and writes
       ;; - deny .git - reads and writes
+      ;; - deny .vault files — reads and writes
       ;; - deny bw (Bitwarden CLI) — execution and reads
       ;; - deny rbw (inofficial Bitwarden CLI) — execution and reads
       ;; - allow OrbStack binary
@@ -326,6 +329,27 @@ class ClaudeSafe < Formula
 
       (deny file-read* file-write*
         (regex #"/\.git/")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; deny .vault files — reads and writes
+      ;;
+      ;; Vault-related files may contain secrets (Ansible Vault passwords,
+      ;; HashiCorp Vault configs, etc.).
+      ;;
+      ;; Covers:
+      ;;   .vault, .vault.yml, .vault_pass    (dotfiles starting with .vault)
+      ;;   vault, vault.yml, vault-secrets    (files/dirs starting with vault)
+      ;;
+      ;; The regex /vault ensures vault appears right after a /, i.e. at the
+      ;; start of a path component — so /somevault will NOT match.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read* file-write*
+        (regex #"/\.vault([^/]*)?$")
+        (regex #"/\.vault[^/]*/")
+        (regex #"/vault([^/]*)?$")
+        (regex #"/vault[^/]*/")
       )
 
       ;; ---------------------------------------------------------------------------
@@ -450,6 +474,24 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/vault.sb").write <<~EOS
+      ;; Custom sandbox profile: vault
+      ;;
+      ;; Re-enables access to vault files blocked by
+      ;; sandstorm-additional-claude-safe-guards.sb
+      ;;
+      ;; Activated via: claude-safe --enable=vault
+
+      (version 1)
+
+      (allow file-read* file-write*
+        (regex #"/\.vault([^/]*)?$")
+        (regex #"/\.vault[^/]*/")
+        (regex #"/vault([^/]*)?$")
+        (regex #"/vault[^/]*/")
+      )
+    EOS
+
     (share/"profiles").install Dir["profiles/*"]
 
     # Zsh completion for claude-safe
@@ -462,6 +504,7 @@ class ClaudeSafe < Formula
         'git:Re-allow .git folder access'
         'flutter:Flutter/Dart toolchain + .git access'
         'mistral:Vibe config (~/.vibe)'
+        'vault:Re-allow vault file access'
         '1password:1Password integration'
         'agent-browser:Agent browser (implies chromium)'
         'browser-native-messaging:Browser native messaging'
