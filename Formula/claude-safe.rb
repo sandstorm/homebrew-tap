@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.4.1"
+  version "2.5.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -34,6 +34,7 @@ class ClaudeSafe < Formula
         .env files        blocked (read+write)   re-enable: --enable=env
         .git folder       blocked (read+write)   re-enable: --enable=git
         .vault files      blocked (read+write)   re-enable: --enable=vault
+        ~/.kube           blocked (read+write)   NOT re-enableable (too dangerous)
         bw / rbw          blocked (exec+read)    Bitwarden CLIs
 
       CUSTOM PROFILES (claude-safe specific)
@@ -360,6 +361,18 @@ class ClaudeSafe < Formula
         (regex #"(^|/)rbw$")
       )
       
+      ;; ---------------------------------------------------------------------------
+      ;; deny ~/.kube — reads and writes
+      ;;
+      ;; The ~/.kube directory contains kubeconfig files with cluster credentials,
+      ;; client certificates, and tokens. Leaking these could grant full access
+      ;; to Kubernetes clusters. This MUST NOT be accessible under any circumstances.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read* file-write*
+        (home-subpath "/.kube")
+      )
+
       ;; ---------------------------------------------------------------------------
       ;; allow OrbStack binary
       ;;
