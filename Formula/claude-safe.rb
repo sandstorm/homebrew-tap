@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.6.0"
+  version "2.6.1"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -71,8 +71,7 @@ class ClaudeSafe < Formula
         --stdout              Print policy text (don't execute)
 
       NETWORK ISOLATION (experimental — requires CLAUDE_SAFE_EXPERIMENTAL=1)
-        When enabled, localhost/127.0.0.1 and private networks (10.x, 172.16-31.x,
-        192.168.x) are blocked by default to prevent data exfiltration.
+        When enabled, localhost/127.0.0.1 is blocked by default.
 
         --enable=localhost          Re-allow all localhost/127.0.0.1 traffic
         --allow-localhost=PORTS     Comma-separated localhost ports to whitelist
@@ -257,14 +256,8 @@ class ClaudeSafe < Formula
           for _port in "${_ports[@]}"; do
             cat >> "$_tmpprofile" <<EOSB
       (allow network-outbound (remote ip "localhost:$_port"))
-      (allow network-outbound (remote ip "127.0.0.1:$_port"))
-      (allow network-outbound (remote ip "[::1]:$_port"))
       (allow network-bind (local ip "localhost:$_port"))
-      (allow network-bind (local ip "127.0.0.1:$_port"))
-      (allow network-bind (local ip "[::1]:$_port"))
       (allow network-inbound (local ip "localhost:$_port"))
-      (allow network-inbound (local ip "127.0.0.1:$_port"))
-      (allow network-inbound (local ip "[::1]:$_port"))
       EOSB
           done
           safehouse_args+=("--append-profile=$_tmpprofile")
@@ -548,36 +541,17 @@ class ClaudeSafe < Formula
       (version 1)
 
       ;; Block localhost/loopback
+      ;;
+      ;; SBPL only allows "localhost" or "*" as host in (remote ip) / (local ip)
+      ;; filters — literal IPs like "127.0.0.1" are rejected. "localhost" covers
+      ;; both IPv4 (127.0.0.1) and IPv6 (::1) loopback.
       (deny network-outbound (remote ip "localhost:*"))
-      (deny network-outbound (remote ip "127.0.0.1:*"))
-      (deny network-outbound (remote ip "[::1]:*"))
-      (deny network-bind   (local ip "localhost:*"))
-      (deny network-bind   (local ip "127.0.0.1:*"))
-      (deny network-bind   (local ip "[::1]:*"))
+      (deny network-bind     (local ip "localhost:*"))
       (deny network-inbound  (local ip "localhost:*"))
-      (deny network-inbound  (local ip "127.0.0.1:*"))
-      (deny network-inbound  (local ip "[::1]:*"))
 
-      ;; Block RFC 1918 private networks + link-local (best-effort)
-      (deny network-outbound (remote ip "10.*:*"))       ;; 10.0.0.0/8
-      (deny network-outbound (remote ip "172.16.*:*"))   ;; 172.16.0.0/12 (expanded)
-      (deny network-outbound (remote ip "172.17.*:*"))
-      (deny network-outbound (remote ip "172.18.*:*"))
-      (deny network-outbound (remote ip "172.19.*:*"))
-      (deny network-outbound (remote ip "172.20.*:*"))
-      (deny network-outbound (remote ip "172.21.*:*"))
-      (deny network-outbound (remote ip "172.22.*:*"))
-      (deny network-outbound (remote ip "172.23.*:*"))
-      (deny network-outbound (remote ip "172.24.*:*"))
-      (deny network-outbound (remote ip "172.25.*:*"))
-      (deny network-outbound (remote ip "172.26.*:*"))
-      (deny network-outbound (remote ip "172.27.*:*"))
-      (deny network-outbound (remote ip "172.28.*:*"))
-      (deny network-outbound (remote ip "172.29.*:*"))
-      (deny network-outbound (remote ip "172.30.*:*"))
-      (deny network-outbound (remote ip "172.31.*:*"))
-      (deny network-outbound (remote ip "192.168.*:*"))  ;; 192.168.0.0/16
-      (deny network-outbound (remote ip "169.254.*:*"))  ;; link-local
+      ;; NOTE: Private network blocking (10.x, 172.16-31.x, 192.168.x) is not
+      ;; possible at the SBPL level — the ip filter only accepts "localhost" or
+      ;; "*" as host. Blocking private networks would require a proxy layer.
     EOS
 
     (buildpath/"profiles/localhost.sb").write <<~EOS
@@ -592,14 +566,8 @@ class ClaudeSafe < Formula
       (version 1)
 
       (allow network-outbound (remote ip "localhost:*"))
-      (allow network-outbound (remote ip "127.0.0.1:*"))
-      (allow network-outbound (remote ip "[::1]:*"))
-      (allow network-bind   (local ip "localhost:*"))
-      (allow network-bind   (local ip "127.0.0.1:*"))
-      (allow network-bind   (local ip "[::1]:*"))
+      (allow network-bind     (local ip "localhost:*"))
       (allow network-inbound  (local ip "localhost:*"))
-      (allow network-inbound  (local ip "127.0.0.1:*"))
-      (allow network-inbound  (local ip "[::1]:*"))
     EOS
 
     (buildpath/"profiles/vault.sb").write <<~EOS
