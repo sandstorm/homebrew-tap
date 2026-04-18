@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.5.0"
+  version "2.6.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -18,7 +18,7 @@ class ClaudeSafe < Formula
       # Custom profiles installed alongside this script.
       # Names listed here are mapped to --append-profile=PROFILES_DIR/NAME.sb
       # Everything else is passed through to safehouse as --enable=NAME.
-      CUSTOM_PROFILES=(env git flutter mistral vault)
+      CUSTOM_PROFILES=(env git flutter localhost mistral vault)
       PROFILES_DIR="#{share}/profiles"
 
       usage() {
@@ -41,6 +41,7 @@ class ClaudeSafe < Formula
         --enable=env        Re-allow .env file access
         --enable=git        Re-allow .git folder access
         --enable=flutter    Flutter/Dart toolchain + .git access
+        --enable=localhost   Re-allow localhost traffic (see NETWORK ISOLATION)
         --enable=mistral    Vibe config (~/.vibe) — auto-enabled by vibe-safe
         --enable=vault      Re-allow .vault file access
 
@@ -69,12 +70,23 @@ class ClaudeSafe < Formula
         --explain             Print effective grants summary to stderr
         --stdout              Print policy text (don't execute)
 
+      NETWORK ISOLATION (experimental — requires CLAUDE_SAFE_EXPERIMENTAL=1)
+        When enabled, localhost/127.0.0.1 and private networks (10.x, 172.16-31.x,
+        192.168.x) are blocked by default to prevent data exfiltration.
+
+        --enable=localhost          Re-allow all localhost/127.0.0.1 traffic
+        --allow-localhost=PORTS     Comma-separated localhost ports to whitelist
+                                    Example: --allow-localhost=3000,5432
+
       EXAMPLES
         claude-safe                           Basic sandboxed Claude
         claude-safe --enable=docker           Allow Docker commands
         claude-safe --enable=docker,env       Docker + .env access
         claude-safe --add-dirs-ro=../shared   Read access to sibling dir
         claude-safe -- --resume               Pass --resume to Claude
+
+        # Network isolation (requires CLAUDE_SAFE_EXPERIMENTAL=1)
+        claude-safe --allow-localhost=3000    Allow only localhost:3000
 
       MORE INFO
         safehouse -h          Full safehouse documentation
@@ -89,12 +101,15 @@ class ClaudeSafe < Formula
         esac
       done
 
-      # Detect --mistral flag and strip it from the arg list
+      # Detect --mistral and --allow-localhost flags, strip them from the arg list
       cmd="claude"
+      allow_localhost_ports=""
       _filtered=()
       for arg in "$@"; do
         if [[ "$arg" == "--mistral" ]]; then
           cmd="vibe"
+        elif [[ "$arg" == --allow-localhost=* ]]; then
+          allow_localhost_ports="${arg#--allow-localhost=}"
         else
           _filtered+=("$arg")
         fi
@@ -201,6 +216,59 @@ class ClaudeSafe < Formula
 
       if [[ "$cmd" == "claude" ]]; then
         _claude_install_skill "mattpocock/skills" "b2039ab896a01ebcc539704f69974f7bcdfb1226" "tdd"
+      fi
+
+      # ---------------------------------------------------------------------------
+      # Network isolation (experimental — gated behind CLAUDE_SAFE_EXPERIMENTAL=1)
+      # ---------------------------------------------------------------------------
+      _has_network_flags=false
+      # Check if --enable=localhost was requested (already expanded to --append-profile)
+      _has_enable_localhost=false
+      for arg in "${safehouse_args[@]}"; do
+        [[ "$arg" == "--append-profile=${PROFILES_DIR}/localhost.sb" ]] && _has_enable_localhost=true
+      done
+      [[ -n "$allow_localhost_ports" ]] && _has_network_flags=true
+      $_has_enable_localhost && _has_network_flags=true
+
+      if [[ -z "${CLAUDE_SAFE_EXPERIMENTAL:-}" ]]; then
+        if $_has_network_flags; then
+          echo "Error: Network isolation features require CLAUDE_SAFE_EXPERIMENTAL=1" >&2
+          echo "  export CLAUDE_SAFE_EXPERIMENTAL=1" >&2
+          exit 1
+        fi
+      else
+        # Append network-isolation profile (blocks localhost + private networks)
+        safehouse_args+=("--append-profile=${PROFILES_DIR}/network-isolation.sb")
+
+        # Validate: --allow-localhost + --enable=localhost is redundant
+        if [[ -n "$allow_localhost_ports" ]] && $_has_enable_localhost; then
+          echo "Error: --allow-localhost and --enable=localhost cannot be combined." >&2
+          echo "  Use --enable=localhost to allow ALL localhost traffic, or" >&2
+          echo "  --allow-localhost=PORTS to allow specific ports only." >&2
+          exit 1
+        fi
+
+        # Generate temp profile for --allow-localhost=PORTS
+        if [[ -n "$allow_localhost_ports" ]]; then
+          _tmpprofile=$(mktemp "${TMPDIR:-/tmp}/claude-safe-localhost-XXXXXX.sb")
+          trap 'rm -f "$_tmpprofile"' EXIT
+          echo '(version 1)' > "$_tmpprofile"
+          IFS=',' read -ra _ports <<< "$allow_localhost_ports"
+          for _port in "${_ports[@]}"; do
+            cat >> "$_tmpprofile" <<EOSB
+      (allow network-outbound (remote ip "localhost:$_port"))
+      (allow network-outbound (remote ip "127.0.0.1:$_port"))
+      (allow network-outbound (remote ip "[::1]:$_port"))
+      (allow network-bind (local ip "localhost:$_port"))
+      (allow network-bind (local ip "127.0.0.1:$_port"))
+      (allow network-bind (local ip "[::1]:$_port"))
+      (allow network-inbound (local ip "localhost:$_port"))
+      (allow network-inbound (local ip "127.0.0.1:$_port"))
+      (allow network-inbound (local ip "[::1]:$_port"))
+      EOSB
+          done
+          safehouse_args+=("--append-profile=$_tmpprofile")
+        fi
       fi
 
       exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- "$cmd" "${claude_args[@]}"
@@ -465,6 +533,75 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/network-isolation.sb").write <<~EOS
+      ;; Network isolation profile (experimental)
+      ;;
+      ;; Blocks localhost/loopback and private network traffic.
+      ;; Conditionally appended when CLAUDE_SAFE_EXPERIMENTAL=1.
+      ;;
+      ;; Re-enable localhost: --enable=localhost or --allow-localhost=PORT
+      ;;
+      ;; NOTE: Private network deny rules use wildcard IP patterns (e.g.
+      ;; "10.*:*") whose support in SBPL is undocumented. These rules are
+      ;; best-effort — they are harmless if the syntax is unsupported.
+
+      (version 1)
+
+      ;; Block localhost/loopback
+      (deny network-outbound (remote ip "localhost:*"))
+      (deny network-outbound (remote ip "127.0.0.1:*"))
+      (deny network-outbound (remote ip "[::1]:*"))
+      (deny network-bind   (local ip "localhost:*"))
+      (deny network-bind   (local ip "127.0.0.1:*"))
+      (deny network-bind   (local ip "[::1]:*"))
+      (deny network-inbound  (local ip "localhost:*"))
+      (deny network-inbound  (local ip "127.0.0.1:*"))
+      (deny network-inbound  (local ip "[::1]:*"))
+
+      ;; Block RFC 1918 private networks + link-local (best-effort)
+      (deny network-outbound (remote ip "10.*:*"))       ;; 10.0.0.0/8
+      (deny network-outbound (remote ip "172.16.*:*"))   ;; 172.16.0.0/12 (expanded)
+      (deny network-outbound (remote ip "172.17.*:*"))
+      (deny network-outbound (remote ip "172.18.*:*"))
+      (deny network-outbound (remote ip "172.19.*:*"))
+      (deny network-outbound (remote ip "172.20.*:*"))
+      (deny network-outbound (remote ip "172.21.*:*"))
+      (deny network-outbound (remote ip "172.22.*:*"))
+      (deny network-outbound (remote ip "172.23.*:*"))
+      (deny network-outbound (remote ip "172.24.*:*"))
+      (deny network-outbound (remote ip "172.25.*:*"))
+      (deny network-outbound (remote ip "172.26.*:*"))
+      (deny network-outbound (remote ip "172.27.*:*"))
+      (deny network-outbound (remote ip "172.28.*:*"))
+      (deny network-outbound (remote ip "172.29.*:*"))
+      (deny network-outbound (remote ip "172.30.*:*"))
+      (deny network-outbound (remote ip "172.31.*:*"))
+      (deny network-outbound (remote ip "192.168.*:*"))  ;; 192.168.0.0/16
+      (deny network-outbound (remote ip "169.254.*:*"))  ;; link-local
+    EOS
+
+    (buildpath/"profiles/localhost.sb").write <<~EOS
+      ;; Custom sandbox profile: localhost
+      ;;
+      ;; Re-enables all localhost/loopback traffic blocked by
+      ;; network-isolation.sb.
+      ;;
+      ;; Activated via: claude-safe --enable=localhost
+      ;; Requires: CLAUDE_SAFE_EXPERIMENTAL=1
+
+      (version 1)
+
+      (allow network-outbound (remote ip "localhost:*"))
+      (allow network-outbound (remote ip "127.0.0.1:*"))
+      (allow network-outbound (remote ip "[::1]:*"))
+      (allow network-bind   (local ip "localhost:*"))
+      (allow network-bind   (local ip "127.0.0.1:*"))
+      (allow network-bind   (local ip "[::1]:*"))
+      (allow network-inbound  (local ip "localhost:*"))
+      (allow network-inbound  (local ip "127.0.0.1:*"))
+      (allow network-inbound  (local ip "[::1]:*"))
+    EOS
+
     (buildpath/"profiles/vault.sb").write <<~EOS
       ;; Custom sandbox profile: vault
       ;;
@@ -494,6 +631,7 @@ class ClaudeSafe < Formula
         'env:Re-allow .env file access'
         'git:Re-allow .git folder access'
         'flutter:Flutter/Dart toolchain + .git access'
+        'localhost:Re-allow localhost/127.0.0.1 traffic (experimental)'
         'mistral:Vibe config (~/.vibe)'
         'vault:Re-allow vault file access'
         '1password:1Password integration'
@@ -552,6 +690,7 @@ class ClaudeSafe < Formula
         '--explain[Print effective grants summary]' \\
         '--stdout[Print policy text to stdout]' \\
         '--mistral[Use Vibe/Mistral instead of Claude]' \\
+        '--allow-localhost=[Whitelist localhost ports (experimental)]:ports: ' \\
         '(-)--[Stop processing safehouse args]' \\
         '*::: :->cmd_args' && return
 
