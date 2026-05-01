@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.6.2"
+  version "2.7.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -35,6 +35,15 @@ class ClaudeSafe < Formula
         .git folder       blocked (read+write)   re-enable: --enable=git
         .vault files      blocked (read+write)   re-enable: --enable=vault
         ~/.kube           blocked (read+write)   NOT re-enableable (too dangerous)
+        .dev.vars files   blocked (read)         NOT re-enableable
+        *.pem / *.key     blocked (read)         NOT re-enableable
+        secrets/          blocked (read+write)   NOT re-enableable
+        credentials/      blocked (read+write)   NOT re-enableable
+        .aws/             blocked (read+write)   NOT re-enableable
+        .ssh/             blocked (read+write)   NOT re-enableable
+        .npmrc / .pypirc  blocked (read)         NOT re-enableable
+        config/database.yml, config/credentials.json
+                          blocked (read)         NOT re-enableable
         bw / rbw          blocked (exec+read)    Bitwarden CLIs
         localhost         blocked (network)       re-enable: --allow-localhost=PORT
 
@@ -362,6 +371,67 @@ class ClaudeSafe < Formula
         (regex #"/\.vault[^/]*/")
         (regex #"/vault([^/]*)?$")
         (regex #"/vault[^/]*/")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; deny .dev.vars files — reads
+      ;;
+      ;; Cloudflare Workers / Wrangler local secrets files.
+      ;; NOT re-enableable.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read*
+        (regex #"/\\.dev\\.vars([^/]*)?$")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; deny private key files — reads
+      ;;
+      ;; Covers *.pem and *.key: TLS certificates, SSH/GPG private keys.
+      ;; NOT re-enableable.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read*
+        (regex #"/[^/]*\\.pem$")
+        (regex #"/[^/]*\\.key$")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; deny secrets/ and credentials/ directories — reads and writes
+      ;;
+      ;; Matches any path component named "secrets" or "credentials".
+      ;; NOT re-enableable.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read* file-write*
+        (regex #"/secrets(/|$)")
+        (regex #"/credentials(/|$)")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; deny .aws/ and .ssh/ directories — reads and writes
+      ;;
+      ;; Cloud credentials and SSH key material. NOT re-enableable.
+      ;; SSH agent socket access via safehouse --enable=ssh is unaffected.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read* file-write*
+        (regex #"/\\.aws(/|$)")
+        (regex #"/\\.ssh(/|$)")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; deny sensitive config and token files — reads
+      ;;
+      ;; Covers: Rails DB config, app credentials JSON, npm auth token, PyPI token.
+      ;; NOT re-enableable.
+      ;; ---------------------------------------------------------------------------
+
+      (deny file-read*
+        (regex #"/config/database\\.yml$")
+        (regex #"/config/credentials\\.json$")
+        (regex #"/\\.npmrc$")
+        (regex #"/\\.pypirc$")
       )
 
       ;; ---------------------------------------------------------------------------
