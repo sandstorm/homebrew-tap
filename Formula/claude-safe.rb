@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.8.0"
+  version "2.8.1"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -37,7 +37,7 @@ class ClaudeSafe < Formula
         .vault files      blocked (read+write)   re-enable: --enable=vault
         ~/.kube           blocked (read+write)   NOT re-enableable (too dangerous)
         .dev.vars files   blocked (read)         NOT re-enableable
-        *.pem / *.key     blocked (read)         NOT re-enableable
+        *.key             blocked (read)         NOT re-enableable
         secrets/          blocked (read+write)   NOT re-enableable
         credentials/      blocked (read+write)   NOT re-enableable
         .aws/             blocked (read+write)   NOT re-enableable
@@ -423,12 +423,13 @@ class ClaudeSafe < Formula
       ;; ---------------------------------------------------------------------------
       ;; deny private key files — reads
       ;;
-      ;; Covers *.pem and *.key: TLS certificates, SSH/GPG private keys.
+      ;; Covers *.key: SSH/GPG/TLS private keys.
+      ;; *.pem is intentionally not blocked because Python/Vibe may need
+      ;; CA bundles such as certifi/cacert.pem for TLS verification.
       ;; NOT re-enableable.
       ;; ---------------------------------------------------------------------------
 
       (deny file-read*
-        (regex #"/[^/]*\\.pem$")
         (regex #"/[^/]*\\.key$")
       )
 
