@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.7.0"
+  version "2.8.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -18,16 +18,17 @@ class ClaudeSafe < Formula
       # Custom profiles installed alongside this script.
       # Names listed here are mapped to --append-profile=PROFILES_DIR/NAME.sb
       # Everything else is passed through to safehouse as --enable=NAME.
-      CUSTOM_PROFILES=(env git flutter mistral vault)
+      CUSTOM_PROFILES=(env git flutter mistral codex vault)
       PROFILES_DIR="#{share}/profiles"
 
       usage() {
         cat <<EOF
       Usage: $(basename "$0") [options] [-- claude-args...]
              vibe-safe   [options] [-- vibe-args...]
+             codex-safe  [options] [-- codex-args...]
 
       WHAT CLAUDE-SAFE DOES
-        Runs Claude Code (or Vibe for Mistral Code) inside an agent-safehouse sandbox.
+        Runs Claude Code (or Vibe for Mistral Code, or Codex for OpenAI) inside an agent-safehouse sandbox.
         By default, the agent can ONLY read/write the current directory.
 
       DEFAULT RESTRICTIONS (Sandstorm policy)
@@ -52,6 +53,7 @@ class ClaudeSafe < Formula
         --enable=git        Re-allow .git folder access
         --enable=flutter    Flutter/Dart toolchain + .git access
         --enable=mistral    Vibe config (~/.vibe) — auto-enabled by vibe-safe
+        --enable=codex      Codex config (~/.codex) — auto-enabled by codex-safe
         --enable=vault      Re-allow .vault file access
 
       SAFEHOUSE FEATURES (pass-through, comma-separated)
@@ -105,13 +107,15 @@ class ClaudeSafe < Formula
         esac
       done
 
-      # Detect --mistral and --allow-localhost flags, strip them from the arg list
+      # Detect --mistral, --codex and --allow-localhost flags, strip them from the arg list
       cmd="claude"
       allow_localhost_ports=""
       _filtered=()
       for arg in "$@"; do
         if [[ "$arg" == "--mistral" ]]; then
           cmd="vibe"
+        elif [[ "$arg" == "--codex" ]]; then
+          cmd="codex"
         elif [[ "$arg" == --allow-localhost=* ]]; then
           allow_localhost_ports="${arg#--allow-localhost=}"
         else
@@ -125,8 +129,15 @@ class ClaudeSafe < Formula
         exit 1
       fi
 
+      if [[ "$cmd" == "codex" ]] && ! command -v codex &>/dev/null; then
+        echo "Error: codex (OpenAI CLI) is not installed. Run: brew install --cask codex" >&2
+        exit 1
+      fi
+
       if [[ "$cmd" == "vibe" ]]; then
         set -- "--enable=mistral" "$@"
+      elif [[ "$cmd" == "codex" ]]; then
+        set -- "--enable=codex" "$@"
       fi
 
       # Expand a comma-separated enable value.
@@ -258,6 +269,13 @@ class ClaudeSafe < Formula
 
     bin.install "vibe-safe"
 
+    (buildpath/"codex-safe").write <<~EOS
+      #!/bin/bash
+      exec "#{bin}/claude-safe" --codex "$@"
+    EOS
+
+    bin.install "codex-safe"
+
     (buildpath/"aliases.zsh").write <<~EOS
       # Managed by brew install sandstorm/tap/claude-safe — do not edit manually
       # This file is updated automatically when the formula is upgraded.
@@ -295,6 +313,24 @@ class ClaudeSafe < Formula
           "$_vibe_original" "$@"
         else
           command vibe "$@"
+        fi
+      }
+
+      # Save original codex path before overriding
+      if command -v codex &>/dev/null; then
+        _codex_original="$(command -v codex)"
+      fi
+
+      codex() {
+        echo "⚠️  Use 'codex-safe' for sandboxed Codex (recommended) or 'codex-unsafe' for unrestricted access." >&2
+        return 1
+      }
+
+      codex-unsafe() {
+        if [[ -n "$_codex_original" ]]; then
+          "$_codex_original" "$@"
+        else
+          command codex "$@"
         fi
       }
     EOS
@@ -568,6 +604,21 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/codex.sb").write <<~EOS
+      ;; Custom sandbox profile: codex
+      ;;
+      ;; Re-enables access to things blocked by safehouse defaults:
+      ;;   - $HOME/.codex (read + write)
+      ;;
+      ;; Activated automatically when using --codex / codex-safe
+
+      (version 1)
+
+      (allow file-read* file-write*
+        (home-subpath "/.codex")
+      )
+    EOS
+
     (buildpath/"profiles/network-isolation.sb").write <<~EOS
       ;; Network isolation profile
       ;;
@@ -625,6 +676,7 @@ class ClaudeSafe < Formula
         'git:Re-allow .git folder access'
         'flutter:Flutter/Dart toolchain + .git access'
         'mistral:Vibe config (~/.vibe)'
+        'codex:Codex config (~/.codex)'
         'vault:Re-allow vault file access'
         '1password:1Password integration'
         'agent-browser:Agent browser (implies chromium)'
