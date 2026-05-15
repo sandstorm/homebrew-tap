@@ -5,12 +5,12 @@
 class Sku < Formula
   desc "Sandstorm Kubernetes Tools"
   homepage "https://github.com/sandstorm/sku"
-  version "2.0.2"
+  version "2.1.0"
   depends_on :macos
 
   if Hardware::CPU.intel?
-    url "https://github.com/sandstorm/sku/releases/download/v2.0.2/sku_Darwin_x86_64.tar.gz"
-    sha256 "72c56c3dc9f97bbaf7c5c553668ff28779123dd765eac4207f5a3d1f7f86f7f2"
+    url "https://github.com/sandstorm/sku/releases/download/v2.1.0/sku_Darwin_x86_64.tar.gz"
+    sha256 "30099c9b8929a9ce9efc8fb910121b5401fe418d7596bd41605b9387d392e05e"
 
     define_method(:install) do
       libexec.install Dir["*"]
@@ -18,8 +18,8 @@ class Sku < Formula
     end
   end
   if Hardware::CPU.arm?
-    url "https://github.com/sandstorm/sku/releases/download/v2.0.2/sku_Darwin_arm64.tar.gz"
-    sha256 "7296bcaeae503123c41abcf74ae237be37c0ec4d9816172c06eac26bde472a59"
+    url "https://github.com/sandstorm/sku/releases/download/v2.1.0/sku_Darwin_arm64.tar.gz"
+    sha256 "5a31e81b4d732346d5ef7e2caf2ccb4d0eabf2e98279d599c9f4334d0f170f3c"
 
     define_method(:install) do
       libexec.install Dir["*"]
