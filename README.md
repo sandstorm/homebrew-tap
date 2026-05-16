@@ -19,4 +19,5 @@ brew update
 
 # (re)install new version from local formula
 brew install sandstorm-dev/tap/claude-safe
+brew install sandstorm-dev/tap/claude-metrics
 ```

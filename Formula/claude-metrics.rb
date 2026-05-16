@@ -9,7 +9,10 @@ class ClaudeMetrics < Formula
   version "0.1.0"
 
   depends_on "jq"
-  depends_on "nats-io/nats-tools/nats"
+  # nats CLI is intentionally not listed here — the nats-io/nats-tools tap must
+  # be added by the user, and pulling a cross-tap dep triggers homebrew/core
+  # cloning on machines where it isn't tapped yet.
+  # Install separately: brew install nats-io/nats-tools/nats
 
   def install
     (buildpath/"claude-metrics-emit").write <<~'BASH'
@@ -52,6 +55,7 @@ class ClaudeMetrics < Formula
       esac
 
       [ -n "$NATS_URL" ] || _bail "NATS_URL unset"
+      command -v nats >/dev/null 2>&1 || _bail "nats CLI not found — run: brew install nats-io/nats-tools/nats"
       [ -r "$NATS_NKEY_FILE" ] || _bail "nkey file unreadable: $NATS_NKEY_FILE"
 
       # Require 0600 on the seed file — anything looser is a misconfig.
@@ -455,6 +459,8 @@ class ClaudeMetrics < Formula
       Done.
 
       Next:
+        0. Install the nats CLI (if not done):
+             brew install nats-io/nats-tools/nats
         1. Create ~/.config/claude-metrics/nats.conf — see the example at
              $(brew --prefix)/share/claude-metrics/nats.conf.example
         2. Drop your nkey seed at ~/.config/claude-metrics/submission-key.nkey
@@ -519,6 +525,9 @@ class ClaudeMetrics < Formula
 
   def caveats
     <<~EOS
+      Required: install the nats CLI (not auto-installed to avoid homebrew-core tap issues):
+        brew install nats-io/nats-tools/nats
+
       To enable metrics emission:
 
         1. Wire the hooks into Claude Code & Codex:
