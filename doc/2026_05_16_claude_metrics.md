@@ -48,7 +48,7 @@ Two files under `~/.config/claude-metrics/`:
 
    ```
    NATS_URL=tls://nats.example:4222
-   NATS_SUBJECT_PREFIX=metrics.agents
+   NATS_SUBJECT_PREFIX=logs.default.claudemetrics
    NATS_NKEY_FILE=~/.config/claude-metrics/submission-key.nkey
    ```
 
@@ -89,7 +89,7 @@ ACLs later:
 <prefix>.<tool>.<event>.<host>.<user>
 ```
 
-Example: `metrics.agents.claude.prompt.macbook-seb.seb`
+Example: `logs.default.claudemetrics.claude.prompt.macbook-seb.seb`
 
 Events:
 
@@ -524,7 +524,7 @@ budget per user.
 - `quota_sample` events emitted from a passive statusLine wrapper that
   captures the `rate_limits` JSON Claude Code (v2.1.80+) hands to it
   on stdin. Debounced to ≥60 s. Pure local read — no API call.
-- Subject: `<prefix>.<tool>.<event>.<host>.<user>`.
+- Subject: `logs.default.claudemetrics.<tool>.<event>.<host>.<user>` (prefix configurable via `NATS_SUBJECT_PREFIX`, default `logs.default.claudemetrics`).
 - Config: `~/.config/claude-metrics/nats.conf` with `NATS_URL`,
   `NATS_SUBJECT_PREFIX`, `NATS_NKEY_FILE`, `CUSTOMER_TENANT`,
   `CUSTOMER_PROJECT`, `HOST_GROUP`. The nkey seed lives in a separate
