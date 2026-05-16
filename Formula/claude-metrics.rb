@@ -240,7 +240,7 @@ class ClaudeMetrics < Formula
         --arg cwd_hash          "$CWD_HASH" \
         --arg message_id        "$MESSAGE_ID" \
         --arg request_id        "$REQUEST_ID" \
-        --arg event_original    "$RAW_PAYLOAD" \
+        --argjson event_original "${RAW_PAYLOAD:-{\}}" \
         --arg duration_ms       "$DURATION_MS" \
         --arg t_in              "$TOKENS_INPUT" \
         --arg t_out             "$TOKENS_OUTPUT" \
