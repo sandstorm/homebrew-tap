@@ -8,11 +8,12 @@ class ClaudeMetrics < Formula
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
   version "0.1.0"
 
-  depends_on "jq"
-  # nats CLI is intentionally not listed here — the nats-io/nats-tools tap must
-  # be added by the user, and pulling a cross-tap dep triggers homebrew/core
-  # cloning on machines where it isn't tapped yet.
-  # Install separately: brew install nats-io/nats-tools/nats
+  # Both jq and nats are intentionally not listed as depends_on — any formula
+  # in homebrew/core (e.g. jq) forces Homebrew to clone that tap, which fails
+  # on machines where homebrew/core is not already tapped.
+  # Install them separately:
+  #   brew install jq
+  #   brew install nats-io/nats-tools/nats
 
   def install
     (buildpath/"claude-metrics-emit").write <<~'BASH'
@@ -55,6 +56,7 @@ class ClaudeMetrics < Formula
       esac
 
       [ -n "$NATS_URL" ] || _bail "NATS_URL unset"
+      command -v jq   >/dev/null 2>&1 || _bail "jq not found — run: brew install jq"
       command -v nats >/dev/null 2>&1 || _bail "nats CLI not found — run: brew install nats-io/nats-tools/nats"
       [ -r "$NATS_NKEY_FILE" ] || _bail "nkey file unreadable: $NATS_NKEY_FILE"
 
@@ -392,7 +394,7 @@ class ClaudeMetrics < Formula
       CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
       CODEX_CONF="${HOME}/.codex/config.toml"
 
-      command -v jq >/dev/null 2>&1 || { echo "❌ jq is required" >&2; exit 1; }
+      command -v jq >/dev/null 2>&1 || { echo "❌ jq is required — run: brew install jq" >&2; exit 1; }
 
       install_claude_hooks() {
         mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
@@ -525,7 +527,9 @@ class ClaudeMetrics < Formula
 
   def caveats
     <<~EOS
-      Required: install the nats CLI (not auto-installed to avoid homebrew-core tap issues):
+      Required dependencies (not auto-installed — any homebrew/core dep forces
+      cloning that tap, which fails on machines where it isn't already tapped):
+        brew install jq
         brew install nats-io/nats-tools/nats
 
       To enable metrics emission:
