@@ -256,7 +256,10 @@ class ClaudeSafe < Formula
         safehouse_args+=("--append-profile=$_tmpprofile")
       fi
 
-      exec env SAFEHOUSE_WORKDIR=. safehouse --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" "${safehouse_args[@]}" -- "$cmd" "${claude_args[@]}"
+      exec env SAFEHOUSE_WORKDIR=. safehouse \
+        --append-profile="#{share}/sandstorm-additional-claude-safe-guards.sb" \
+        --append-profile="#{share}/profiles/claude-metrics.sb" \
+        "${safehouse_args[@]}" -- "$cmd" "${claude_args[@]}"
 
       EOS
 
@@ -662,6 +665,26 @@ class ClaudeSafe < Formula
         (regex #"/\.vault[^/]*/")
         (regex #"/vault([^/]*)?$")
         (regex #"/vault[^/]*/")
+      )
+    EOS
+
+    (buildpath/"profiles/claude-metrics.sb").write <<~EOS
+      ;; Sandbox profile: claude-metrics
+      ;;
+      ;; Allows the claude-metrics-emit hook (fired from inside the sandbox
+      ;; by Claude Code) to reach its config and state directories:
+      ;;   - $HOME/.config/claude-metrics/  — nats.conf + nkey seed (read-only)
+      ;;   - $HOME/.cache/claude-metrics/   — session timing + statusline debounce (r/w)
+      ;;
+      ;; Auto-loaded by claude-safe — no --enable flag needed.
+
+      (version 1)
+
+      (allow file-read*
+        (home-subpath "/.config/claude-metrics")
+      )
+      (allow file-read* file-write*
+        (home-subpath "/.cache/claude-metrics")
       )
     EOS
 

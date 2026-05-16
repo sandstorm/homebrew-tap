@@ -41,7 +41,7 @@ class ClaudeMetrics < Formula
       [ -r "$CONF" ] || _bail "no config at $CONF (opt-out)"
 
       NATS_URL=""
-      NATS_SUBJECT_PREFIX="metrics.agents"
+      NATS_SUBJECT_PREFIX="logs.default.claudemetrics"
       NATS_NKEY_FILE="${HOME}/.config/claude-metrics/submission-key.nkey"
       CUSTOMER_TENANT=""
       CUSTOMER_PROJECT=""
@@ -469,7 +469,7 @@ class ClaudeMetrics < Formula
            and chmod 600 it:
              chmod 600 ~/.config/claude-metrics/submission-key.nkey
         3. Verify connectivity:
-             CLAUDE_METRICS_DEBUG=1 echo '{}' | claude-metrics-emit session_start
+             echo '{}' | CLAUDE_METRICS_DEBUG=1 claude-metrics-emit session_start
 
       EOM
     BASH
@@ -484,7 +484,7 @@ class ClaudeMetrics < Formula
       NATS_NKEY_FILE=~/.config/claude-metrics/submission-key.nkey
 
       # Optional:
-      NATS_SUBJECT_PREFIX=metrics.agents
+      NATS_SUBJECT_PREFIX=logs.default.claudemetrics
 
       # Tagging — emitted on every event so the central ClickHouse table
       # (sandstorm_monitoring_v2_db.full_logs) can slice by tenant/project/group.
@@ -544,7 +544,7 @@ class ClaudeMetrics < Formula
              chmod 600 ~/.config/claude-metrics/submission-key.nkey
 
         3. Verify (with debug):
-             CLAUDE_METRICS_DEBUG=1 echo '{}' | claude-metrics-emit session_start
+             echo '{}' | CLAUDE_METRICS_DEBUG=1 claude-metrics-emit session_start
 
       Opt out by removing ~/.config/claude-metrics/nats.conf.
     EOS
