@@ -42,26 +42,30 @@ Shipped as a new Homebrew formula in this tap, modeled after
 
 ## NATS connection
 
-Single config file at `~/.config/claude-metrics/nats.conf` (key=value):
+Two files under `~/.config/claude-metrics/`:
+
+1. `nats.conf` (key=value, mode 644):
+
+   ```
+   NATS_URL=tls://nats.example:4222
+   NATS_SUBJECT_PREFIX=metrics.agents
+   NATS_NKEY_FILE=~/.config/claude-metrics/submission-key.nkey
+   ```
+
+2. `submission-key.nkey` (mode **0600**) — the raw nkey seed, on disk.
+   The `nats` CLI's `--nkey` flag takes a **file path**, not an inline
+   value, so we keep the seed in a 0600 file rather than trying to
+   smuggle it through process substitution.
+
+The emitter sources `nats.conf` and publishes via:
 
 ```
-NATS_URL=tls://nats.example:4222
-NATS_SUBJECT_PREFIX=metrics.agents
-NATS_NKEY=SUAEXAMPLE...     # nkey seed inline
-```
-
-The emitter sources this file and publishes via:
-
-```
-nats --server "$NATS_URL" --nkey <(printf '%s' "$NATS_NKEY") \
+nats --server "$NATS_URL" --nkey "$NATS_NKEY_FILE" \
      pub "$subject" "$payload"
 ```
 
-(The `<(…)` form keeps the seed off disk; if `nats` requires a real file
-we use `mktemp` + `trap rm`.)
-
-If the conf file is missing or unreadable → `exit 0` silently. Not
-configuring it == opting out.
+If `nats.conf` is missing/unreadable, or `NATS_NKEY_FILE` doesn't exist
+or isn't 0600 → `exit 0` silently. Not configuring it == opting out.
 
 ## Async publish
 
@@ -521,14 +525,18 @@ budget per user.
   captures the `rate_limits` JSON Claude Code (v2.1.80+) hands to it
   on stdin. Debounced to ≥60 s. Pure local read — no API call.
 - Subject: `<prefix>.<tool>.<event>.<host>.<user>`.
-- Config: single `~/.config/claude-metrics/nats.conf` with `NATS_URL`,
-  `NATS_SUBJECT_PREFIX`, `NATS_SEED` (inline seed), `CUSTOMER_TENANT`,
-  `CUSTOMER_PROJECT`, `HOST_GROUP`. Missing file = opt-out.
+- Config: `~/.config/claude-metrics/nats.conf` with `NATS_URL`,
+  `NATS_SUBJECT_PREFIX`, `NATS_NKEY_FILE`, `CUSTOMER_TENANT`,
+  `CUSTOMER_PROJECT`, `HOST_GROUP`. The nkey seed lives in a separate
+  0600 file referenced by `NATS_NKEY_FILE` (default
+  `~/.config/claude-metrics/submission-key.nkey`). Missing file =
+  opt-out.
 
 ## Resolved during shaping
 
-- **nats CLI seed**: `--seed` takes the value inline (env var
-  `NATS_SEED`). No tempfile or process substitution needed.
+- **nats CLI seed**: `--nkey` takes a **file path** (not an inline
+  value). Seed lives in `~/.config/claude-metrics/submission-key.nkey`
+  with mode 0600; `nats.conf` only carries `NATS_NKEY_FILE=<path>`.
 - **Claude Code local quota file**: doesn't exist. Use the OAuth
   endpoint `GET https://api.anthropic.com/api/oauth/usage` with the
   bearer from `~/.claude/.credentials.json`.
