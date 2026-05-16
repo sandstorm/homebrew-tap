@@ -92,8 +92,13 @@ Events:
 - `session_start` — Claude Code `SessionStart` hook
 - `prompt` — Claude Code `UserPromptSubmit` hook
 - `stop` — end-of-turn (Claude `Stop` hook / Codex `notify`) — carries
-  cumulative session token totals
+  per-turn token usage
 - `session_end` — Claude Code `SessionEnd` hook
+- `quota_wall` — Claude limit hit (synthetic-error row detected on
+  `Stop`)
+- `quota_sample` — Claude statusLine sample (Claude Code v2.1.80+
+  only; debounced ≥60 s)
+- `api_error` — non-quota transcript error (`server_error`, `unknown`)
 
 End-of-turn is enough for Codex; no extra wrapping needed.
 
@@ -294,7 +299,132 @@ arrays automatically is more risk than reward.)
 
 **Skipped in v1.** Revisit when Vibe ships a hook system.
 
-## Quota — dropped from v1 (computed server-side instead)
+## Detecting limits without API calls
+
+Two account-safe local signals exist and **both are in scope for v1**:
+
+### A. Wall-hit signal (limit reached) — from the transcript
+
+When the 5-hour or weekly limit fires, Claude Code writes a synthetic
+assistant row into the active transcript JSONL. Verified against a
+real row from `~/.claude/projects/`:
+
+```json
+{
+  "type": "assistant",
+  "isApiErrorMessage": true,
+  "error": "rate_limit",
+  "timestamp": "2026-04-17T08:10:28.297Z",
+  "sessionId": "…",
+  "message": {
+    "model": "<synthetic>",
+    "stop_reason": "stop_sequence",
+    "usage": { "input_tokens": 0, "output_tokens": 0, … },
+    "content": [{"type": "text",
+                 "text": "You've hit your limit · resets 1:20am (Europe/Berlin)"}]
+  }
+}
+```
+
+Detection rule: `isApiErrorMessage === true && error === "rate_limit"`.
+
+**We do not parse the message client-side.** The emitter just forwards
+the raw transcript row's `error` value and the unmodified text — the
+server side (ClickHouse / downstream) parses the human string into
+"5-hour vs weekly" and an ISO reset timestamp. This keeps the emitter
+trivial (no timezone parsing, no regex maintenance when Anthropic
+rewords the message) and means a wording change on their side never
+breaks our shim — only the server-side parser needs an update.
+
+Extra flat fields on the `quota_wall` event:
+
+```json
+{
+  "event":              "quota_wall",
+  "quota_wall_error":   "rate_limit",
+  "quota_wall_text":    "You've hit your limit · resets 1:20am (Europe/Berlin)"
+}
+```
+
+(`event_original` already carries the full raw row, so the server can
+also reach in there for any other field it wants — `quota_wall_text`
+is just a convenience extraction.)
+
+Related distinct `error` values seen in the same row shape — forwarded
+as generic `api_error` events with the same two-field pattern
+(`api_error_error`, `api_error_text`), no parsing:
+
+- `"server_error"` → e.g. `"API Error: 529 Overloaded"` (transient)
+- `"unknown"` → stream timeouts
+
+### B. Live percentage signal — from a passive statusLine
+
+Claude Code **v2.1.80+** passes a JSON payload on stdin to a configured
+`statusLine` script on every render. The payload includes:
+
+```json
+{
+  "rate_limits": {
+    "five_hour": { "used_percentage": 42, "resets_at": "2026-05-16T15:00:00Z" },
+    "seven_day": { "used_percentage": 17, "resets_at": "2026-05-19T00:00:00Z" },
+    "seven_day_opus":   { "used_percentage": 63, "resets_at": "…" },
+    "seven_day_sonnet": { "used_percentage": 12, "resets_at": "…" }
+  },
+  …
+}
+```
+
+This is account-safe — Claude Code is **giving us the data**, not us
+asking the server. No `User-Agent` mimicry, no OAuth, no API call.
+
+The hook installer registers a tiny statusLine wrapper:
+
+```jsonc
+{
+  "statusLine": {
+    "type": "command",
+    "command": "claude-metrics-statusline"
+  }
+}
+```
+
+`claude-metrics-statusline` does two things:
+
+1. Captures the stdin JSON and, if `rate_limits` is present and the
+   last-seen percentage has changed (debounced ≥60 s),
+   asynchronously emits a `quota_sample` event with these flat fields:
+
+   ```json
+   {
+     "event":                       "quota_sample",
+     "quota_five_hour_pct_used":    42,
+     "quota_five_hour_resets_at":   "2026-05-16T15:00:00Z",
+     "quota_seven_day_pct_used":    17,
+     "quota_seven_day_resets_at":   "2026-05-19T00:00:00Z",
+     "quota_seven_day_opus_pct_used":   63,
+     "quota_seven_day_sonnet_pct_used": 12
+   }
+   ```
+
+2. Prints whatever statusLine string the user wants (default: empty
+   line). If the user already has a statusLine configured, the
+   installer **refuses to overwrite it** and prints a one-line diff;
+   the user merges by hand.
+
+Until the user updates to v2.1.80+, the stdin payload simply lacks
+`rate_limits` and the wrapper emits nothing. We don't depend on it.
+
+### Why this is enough
+
+A. catches the hard-limit moment (the user is now blocked — useful
+operational alert).
+B. catches the soft drift toward the limit (used_percentage rising)
+without us ever calling Anthropic.
+
+No outbound traffic to vendor APIs. No spoofed User-Agents. No ToS
+risk.
+
+## Active-fetch quota — dropped from v1
 
 We explicitly do **not** call any Anthropic / OpenAI API to fetch quota.
 
@@ -314,8 +444,13 @@ Locally, neither Claude Code nor Codex persists meaningful quota state:
   subscription quota.
 - `~/.codex/...` → no quota state at all.
 
-So v1 emits **no `quota_*` fields**. If/when Anthropic ships a local
-quota file or an official non-interactive command, we add it then.
+So v1 makes zero outbound calls. Quota is instead derived from two
+**local, account-safe** signals — see the "Detecting limits without
+API calls" section above:
+
+- `quota_wall` events from the JSONL synthetic-error rows (limit hit).
+- `quota_sample` events from the statusLine stdin payload on
+  Claude Code v2.1.80+ (live percentage, no API call).
 
 Tokens-per-turn from the transcript are already an excellent proxy for
 "how heavy is this session", and the ClickHouse side can compute
@@ -368,7 +503,8 @@ budget per user.
 - `claude-metrics` formula in this tap (separate from `claude-safe`).
 - Bash emitter: `jq` for JSON, `nats` CLI for publish, fully async.
 - Claude Code: 4 hooks (`SessionStart`, `UserPromptSubmit`, `Stop`,
-  `SessionEnd`), tagged `_managed_by: sandstorm-claude-metrics`.
+  `SessionEnd`) plus a `statusLine` wrapper for live quota samples,
+  all tagged `_managed_by: sandstorm-claude-metrics`.
 - Codex: `notify` only → `stop` events.
 - Vibe: not supported.
 - Explicit `claude-metrics-install-hooks` command (no auto-edit).
@@ -376,9 +512,14 @@ budget per user.
   with `event_original` carrying the raw hook payload.
 - Per-turn token values (Claude Code's native shape), named with the
   explicit `tokens_turn_*` prefix; ClickHouse aggregates with `SUM()`.
-- No quota fields. No outbound calls to Anthropic / OpenAI APIs at
-  all — strict invariant: never look like a non-vendor client to the
-  vendor's servers.
+- No outbound calls to Anthropic / OpenAI APIs at all — strict
+  invariant: never look like a non-vendor client to the vendor's
+  servers.
+- `quota_wall` events emitted when the synthetic `error:"rate_limit"`
+  row appears in the transcript (limit hit, with reset time text).
+- `quota_sample` events emitted from a passive statusLine wrapper that
+  captures the `rate_limits` JSON Claude Code (v2.1.80+) hands to it
+  on stdin. Debounced to ≥60 s. Pure local read — no API call.
 - Subject: `<prefix>.<tool>.<event>.<host>.<user>`.
 - Config: single `~/.config/claude-metrics/nats.conf` with `NATS_URL`,
   `NATS_SUBJECT_PREFIX`, `NATS_SEED` (inline seed), `CUSTOMER_TENANT`,
