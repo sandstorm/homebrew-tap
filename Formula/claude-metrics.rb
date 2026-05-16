@@ -493,7 +493,7 @@ class ClaudeMetrics < Formula
       HOST_GROUP=laptops
     CONF
 
-    (buildpath/"README.md").write <<~'MD'
+    (buildpath/"USAGE.md").write <<~'MD'
       # claude-metrics
 
       Hook-driven usage metrics for Claude Code and Codex (OpenAI),
@@ -522,7 +522,7 @@ class ClaudeMetrics < Formula
       exits silently when its config is missing.
     MD
 
-    (share/"claude-metrics").install "nats.conf.example", "README.md"
+    (share/"claude-metrics").install "nats.conf.example", "USAGE.md"
   end
 
   def caveats
