@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.9.0"
+  version "2.10.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -55,6 +55,9 @@ class ClaudeSafe < Formula
         --enable=mistral    Vibe config (~/.vibe) — auto-enabled by vibe-safe
         --enable=codex      Codex config (~/.codex) — auto-enabled by codex-safe
         --enable=vault      Re-allow .vault file access
+        --enable=sdd        SDD decision-graph skill — required for the /sdd skill.
+                            Re-allows localhost binding (Claude Code's own nested
+                            sandbox proxy needs it) + .git access.
 
       SAFEHOUSE FEATURES (pass-through, comma-separated)
         --enable=FEATURES   1password, agent-browser, browser-native-messaging,
@@ -160,6 +163,27 @@ class ClaudeSafe < Formula
         done
       }
 
+      # --enable=sdd is handled specially: its sandbox profile re-allows localhost
+      # binding, which must be appended AFTER network-isolation.sb to win (SBPL is
+      # last-match-wins). So we pull "sdd" out of the --enable value here, set a
+      # flag, and append the profile later (see below). Runs in the parent shell
+      # (not a subshell) so it can set enable_sdd.
+      enable_sdd=false
+      _enable_filtered=""
+      _filter_sdd() {
+        local value="$1" name
+        local out=()
+        local IFS=','
+        for name in $value; do
+          if [[ "$name" == "sdd" ]]; then
+            enable_sdd=true
+          else
+            out+=("$name")
+          fi
+        done
+        _enable_filtered="${out[*]}"
+      }
+
       # Pre-process args: expand --enable=a,b and --enable a,b forms.
       expanded=()
       args=("$@")
@@ -167,14 +191,20 @@ class ClaudeSafe < Formula
       while [[ $i -lt ${#args[@]} ]]; do
         arg="${args[$i]}"
         if [[ "$arg" == --enable=* ]]; then
-          while IFS= read -r -d '' token; do
-            expanded+=("$token")
-          done < <(_expand_enable "${arg#--enable=}")
+          _filter_sdd "${arg#--enable=}"
+          if [[ -n "$_enable_filtered" ]]; then
+            while IFS= read -r -d '' token; do
+              expanded+=("$token")
+            done < <(_expand_enable "$_enable_filtered")
+          fi
         elif [[ "$arg" == "--enable" && $((i+1)) -lt ${#args[@]} ]]; then
           ((i++))
-          while IFS= read -r -d '' token; do
-            expanded+=("$token")
-          done < <(_expand_enable "${args[$i]}")
+          _filter_sdd "${args[$i]}"
+          if [[ -n "$_enable_filtered" ]]; then
+            while IFS= read -r -d '' token; do
+              expanded+=("$token")
+            done < <(_expand_enable "$_enable_filtered")
+          fi
         else
           expanded+=("$arg")
         fi
@@ -237,6 +267,12 @@ class ClaudeSafe < Formula
       # Network isolation — blocks localhost by default
       # ---------------------------------------------------------------------------
       safehouse_args+=("--append-profile=${PROFILES_DIR}/network-isolation.sb")
+
+      # --enable=sdd: re-allow localhost binding (+ .git). MUST come after
+      # network-isolation.sb so its localhost allows override the localhost denies.
+      if [[ "$enable_sdd" == true ]]; then
+        safehouse_args+=("--append-profile=${PROFILES_DIR}/sdd.sb")
+      fi
 
       # Generate temp profile for --allow-localhost=PORTS
       if [[ -n "$allow_localhost_ports" ]]; then
@@ -668,6 +704,38 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/sdd.sb").write <<~EOS
+      ;; Custom sandbox profile: sdd
+      ;;
+      ;; Re-enables what the /sdd Claude Code skill needs:
+      ;;   - localhost bind/inbound/outbound
+      ;;       The /sdd skill runs the `sdd` CLI, which spawns a nested
+      ;;       `claude -p` subprocess. Claude Code's own sandbox (enabled in the
+      ;;       user's settings) enforces network rules via a localhost proxy +
+      ;;       control server that must bind loopback ports. network-isolation.sb
+      ;;       denies that, producing "Failed to start server. Is port 0 in use?"
+      ;;       and severing the API connection. Re-allowing localhost fixes it.
+      ;;   - .git read/write
+      ;;       sdd derives repo_id from the git remote and sdd-groom inspects
+      ;;       commits; .git is blocked by default.
+      ;;
+      ;; Activated via: claude-safe --enable=sdd
+      ;;
+      ;; NOTE: this re-opens ALL of localhost. It is only loaded when --enable=sdd
+      ;; is passed, and claude-safe appends it AFTER network-isolation.sb so these
+      ;; allows override the localhost denies (SBPL is last-match-wins).
+
+      (version 1)
+
+      (allow network-bind     (local ip "localhost:*"))
+      (allow network-inbound  (local ip "localhost:*"))
+      (allow network-outbound (remote ip "localhost:*"))
+
+      (allow file-read* file-write*
+        (regex #"/\.git/")
+      )
+    EOS
+
     (buildpath/"profiles/claude-metrics.sb").write <<~EOS
       ;; Sandbox profile: claude-metrics
       ;;
@@ -702,6 +770,7 @@ class ClaudeSafe < Formula
         'mistral:Vibe config (~/.vibe)'
         'codex:Codex config (~/.codex)'
         'vault:Re-allow vault file access'
+        'sdd:SDD decision-graph skill (localhost proxy + .git) — needed for /sdd'
         '1password:1Password integration'
         'agent-browser:Agent browser (implies chromium)'
         'browser-native-messaging:Browser native messaging'
