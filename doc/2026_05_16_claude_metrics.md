@@ -127,7 +127,7 @@ Standard fields (mapped to the table's columns):
 | `timestamp`         | `"2026-05-16 10:11:12.345678"` | DateTime64(6) — UTC, space separator, microseconds !!!!! MUST BE A  |
 | `level`             | `"info"`                       | always `info`; `error` only if we emit a self-error                 |
 | `event_duration_ms` | `12345`                        | session age in ms on `stop` / `session_end`; null otherwise         |
-| `event_original`    | `"{…raw hook payload JSON…}"`  | the unmodified hook stdin payload, as a string                      |
+| `event_original`    | —                              | **dropped** — contained PII (transcript_path, cwd). All useful fields are extracted to top-level. |
 
             #################
             # 2) Processing: timestamp_rfc3339 -> timestamp
@@ -243,7 +243,9 @@ This way, the installer is idempotent and never clobbers user-managed
 hooks.
 
 The hook payload on stdin (`{session_id, transcript_path, cwd, …}`) is
-forwarded into `event_original`. The emitter opens `transcript_path`,
+**not** forwarded wholesale (it contains PII — full filesystem paths). The
+emitter extracts only the safe fields: `session_id` and a sha256 hash of
+`cwd` (`cwd_hash`). It then opens `transcript_path` locally,
 reads the **last** assistant message (which carries the just-completed
 turn's `usage` block), and copies its `input_tokens`,
 `output_tokens`, `cache_read_input_tokens`,
@@ -350,9 +352,7 @@ Extra flat fields on the `quota_wall` event:
 }
 ```
 
-(`event_original` already carries the full raw row, so the server can
-also reach in there for any other field it wants — `quota_wall_text`
-is just a convenience extraction.)
+(`quota_wall_text` is extracted explicitly; no raw row is forwarded.)
 
 Related distinct `error` values seen in the same row shape — forwarded
 as generic `api_error` events with the same two-field pattern
@@ -513,7 +513,7 @@ budget per user.
 - Vibe: not supported.
 - Explicit `claude-metrics-install-hooks` command (no auto-edit).
 - Flat JSON payload matching `sandstorm_monitoring_v2_db.full_logs`,
-  with `event_original` carrying the raw hook payload.
+  no raw hook payload forwarded (PII — paths stripped, only `cwd_hash` sent).
 - Per-turn token values (Claude Code's native shape), named with the
   explicit `tokens_turn_*` prefix; ClickHouse aggregates with `SUM()`.
 - No outbound calls to Anthropic / OpenAI APIs at all — strict
