@@ -6,7 +6,7 @@ class ClaudeMetrics < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "0.3.1"
+  version "0.4.0"
 
   # jq and nats are intentionally not depends_on — any homebrew/core or
   # cross-tap dep forces Homebrew to clone that tap, which fails on
@@ -42,9 +42,9 @@ class ClaudeMetrics < Formula
       [ -n "$STDIN" ] || exit 0
 
       # --- Render the status line (printed via the EXIT trap) ---------------
-      # We show only the "how much runway" row — no dir/branch/model row:
-      #   ctx:N% tok:Nk +N/-N  │  5hr:N% reset T · 7d:N% reset T
-      # Every percentage is REMAINING budget: green (plenty) → red (depleted).
+      # We show only the "how full is it" row — no dir/branch/model row:
+      #   ctx:N% tok:Nk +N/-N  │  5hr:N% reset H:M · 7d:N% reset H:M
+      # Every percentage is USED/FULL: green (empty) → red (full).
       STATUS=""
       if command -v jq >/dev/null 2>&1; then
         # Force the C locale so numbers use "." (not "," under de_DE) and the
@@ -54,11 +54,13 @@ class ClaudeMetrics < Formula
         _sl_col() { printf '\033[%sm%s\033[0m' "$1" "$2"; }
         _sl_jv()  { printf '%s' "$STDIN" | jq -r "$1" 2>/dev/null; }
 
-        # Color a percentage by remaining budget: high=green, low=red.
+        # Color a percentage by how full it is: low=green, high=red.
+        # Non-numeric input falls back to 0 so we never crash a render.
         _sl_pct() {
           _r=$(printf '%.0f' "$1" 2>/dev/null || echo 0)
-          if   [ "$_r" -ge 60 ]; then _sl_col 32 "$2"
-          elif [ "$_r" -ge 30 ]; then _sl_col 33 "$2"
+          [ -n "$_r" ] || _r=0
+          if   [ "$_r" -le 40 ]; then _sl_col 32 "$2"
+          elif [ "$_r" -le 70 ]; then _sl_col 33 "$2"
           else                        _sl_col 31 "$2"; fi
         }
 
@@ -68,15 +70,16 @@ class ClaudeMetrics < Formula
           else echo "$1"; fi
         }
 
-        # "LABEL:N% reset TIME" — shows REMAINING budget, colored.
+        # "LABEL:N% reset TIME" — shows USED/FULL percentage, colored.
         _sl_limit() {
           _label="$1"; _used="$2"; _at="$3"; _datefmt="$4"
           { [ -z "$_used" ] || [ "$_used" = "null" ]; } && return 0
-          _remaining=$(printf '%.0f' "$(awk "BEGIN{print 100-$_used}")" 2>/dev/null || echo 0)
+          _u=$(printf '%.0f' "$_used" 2>/dev/null || echo 0)
+          [ -n "$_u" ] || _u=0
           _reset=""
           { [ -n "$_at" ] && [ "$_at" != "null" ]; } && \
             _reset=$(date -r "$_at" "+$_datefmt" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-          _cp=$(_sl_pct "$_remaining" "${_remaining}%")
+          _cp=$(_sl_pct "$_u" "${_u}%")
           if [ -n "$_reset" ]; then
             printf '%s:%b %s' "$_label" "$_cp" "$(_sl_col 90 "reset $_reset")"
           else
@@ -84,9 +87,9 @@ class ClaudeMetrics < Formula
           fi
         }
 
-        _sl_ctx=$(_sl_jv '.context_window.remaining_percentage // empty')
-        _sl_ti=$(_sl_jv '.context_window.total_input_tokens // 0')
-        _sl_to=$(_sl_jv '.context_window.total_output_tokens // 0')
+        _sl_ctx=$(_sl_jv '.context_window.used_percentage // empty')
+        _sl_ti=$(_sl_jv '.context_window.total_input_tokens // 0' | tr -cd '0-9')
+        _sl_to=$(_sl_jv '.context_window.total_output_tokens // 0' | tr -cd '0-9')
         _sl_total=$(( ${_sl_ti:-0} + ${_sl_to:-0} ))
         _sl_la=$(_sl_jv '.cost.total_lines_added // 0')
         _sl_lr=$(_sl_jv '.cost.total_lines_removed // 0')
@@ -104,10 +107,10 @@ class ClaudeMetrics < Formula
         _sl_addl() { _sl_limits="${_sl_limits:+$_sl_limits  }$1"; }
         _sl_five=$(_sl_limit "5hr" \
           "$(_sl_jv '.rate_limits.five_hour.used_percentage // empty')" \
-          "$(_sl_jv '.rate_limits.five_hour.resets_at // empty')" "%-I%p")
+          "$(_sl_jv '.rate_limits.five_hour.resets_at // empty')" "%H:%M")
         _sl_seven=$(_sl_limit "7d" \
           "$(_sl_jv '.rate_limits.seven_day.used_percentage // empty')" \
-          "$(_sl_jv '.rate_limits.seven_day.resets_at // empty')" "%a %-I%p")
+          "$(_sl_jv '.rate_limits.seven_day.resets_at // empty')" "%a %H:%M")
         [ -n "$_sl_five" ]  && _sl_addl "$_sl_five"
         [ -n "$_sl_seven" ] && _sl_addl "$_sl_seven"
 
@@ -158,7 +161,15 @@ class ClaudeMetrics < Formula
 
       NOW=$(date +%s)
       LAST_TIME=0
-      [ -r "$STATE" ] && LAST_TIME=$(cat "$STATE" 2>/dev/null || echo 0)
+      if [ -r "$STATE" ]; then
+        # Take the first line and keep only digits. This tolerates a corrupt
+        # or legacy (KEY=value) state file — otherwise a non-numeric value
+        # crashes the arithmetic below under `set -u`, which exits non-zero
+        # and makes Claude Code suppress the whole status line. A bad file
+        # would also stay bad forever, since we never reach the rewrite.
+        LAST_TIME=$(head -n1 "$STATE" 2>/dev/null | tr -cd '0-9' | cut -c1-18)
+        [ -n "$LAST_TIME" ] || LAST_TIME=0
+      fi
       ELAPSED=$(( NOW - LAST_TIME ))
       if [ "$ELAPSED" -lt 60 ]; then
         _log "debounced (last emit ${ELAPSED}s ago)"
