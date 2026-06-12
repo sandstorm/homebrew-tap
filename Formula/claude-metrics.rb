@@ -6,7 +6,7 @@ class ClaudeMetrics < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "0.3.0"
+  version "0.3.1"
 
   # jq and nats are intentionally not depends_on — any homebrew/core or
   # cross-tap dep forces Homebrew to clone that tap, which fails on
@@ -287,9 +287,17 @@ class ClaudeMetrics < Formula
       #
       # Wires claude-metrics-statusline into ~/.claude/settings.json.
       # Refuses to overwrite a pre-existing different .statusLine.
+      #
+      # Also migrates away from the old (<=0.1.0) hook-based design: that
+      # version's installer wrote SessionStart/UserPromptSubmit/Stop/
+      # SessionEnd hooks calling `claude-metrics-emit`, a binary this
+      # version no longer ships. Left in place those hooks fail on every
+      # event with "claude-metrics-emit: command not found", so we strip
+      # them here.
 
       set -euo pipefail
 
+      MANAGED="sandstorm-claude-metrics"
       CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
       OURS="claude-metrics-statusline"
 
@@ -307,10 +315,28 @@ class ClaudeMetrics < Formula
         exit 1
       fi
 
+      # Strip stale claude-metrics-emit hooks, then wire in our statusLine.
+      # An entry is ours if it carries the managed tag OR any of its inner
+      # hooks invokes claude-metrics-emit (covers hand-copied duplicates
+      # that lost the _managed_by tag).
       tmp=$(mktemp "${TMPDIR:-/tmp}/claude-metrics-XXXXXXXX")
-      jq --arg c "$OURS" '. + {statusLine: {type:"command", command:$c}}' "$CLAUDE_SETTINGS" > "$tmp"
+      jq --arg c "$OURS" --arg m "$MANAGED" '
+        def is_ours:
+          ((.hooks[0]._managed_by // "") == $m)
+          or ((.hooks // []) | any((.command // "") | startswith("claude-metrics-emit")));
+        def strip(arr): (arr // []) | map(select(is_ours | not));
+        (if (.hooks | type) == "object" then
+          .hooks.SessionStart     = strip(.hooks.SessionStart)
+          | .hooks.UserPromptSubmit = strip(.hooks.UserPromptSubmit)
+          | .hooks.Stop             = strip(.hooks.Stop)
+          | .hooks.SessionEnd       = strip(.hooks.SessionEnd)
+          | .hooks |= with_entries(select((.value | length) > 0))
+          | (if (.hooks | length) == 0 then del(.hooks) else . end)
+        else . end)
+        | . + {statusLine: {type:"command", command:$c}}
+      ' "$CLAUDE_SETTINGS" > "$tmp"
       mv "$tmp" "$CLAUDE_SETTINGS"
-      echo "✅ Wired $OURS into $CLAUDE_SETTINGS"
+      echo "✅ Wired $OURS into $CLAUDE_SETTINGS (and removed any stale claude-metrics-emit hooks)"
 
       cat <<EOM
 
@@ -336,10 +362,13 @@ class ClaudeMetrics < Formula
       #!/bin/bash
       # claude-metrics-uninstall
       #
-      # Removes the statusLine entry from settings.json if it points at us.
+      # Removes the statusLine entry from settings.json if it points at us,
+      # and strips any stale claude-metrics-emit lifecycle hooks left over
+      # from the old (<=0.1.0) hook-based design.
 
       set -euo pipefail
 
+      MANAGED="sandstorm-claude-metrics"
       CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
       OURS="claude-metrics-statusline"
 
@@ -347,16 +376,24 @@ class ClaudeMetrics < Formula
 
       [ -f "$CLAUDE_SETTINGS" ] || { echo "ℹ️  $CLAUDE_SETTINGS not found — nothing to do."; exit 0; }
 
-      EXISTING=$(jq -r '.statusLine.command // ""' "$CLAUDE_SETTINGS" 2>/dev/null || echo "")
-      if [ "$EXISTING" != "$OURS" ]; then
-        echo "ℹ️  .statusLine is not claude-metrics (it's '$EXISTING') — nothing to do."
-        exit 0
-      fi
-
       tmp=$(mktemp "${TMPDIR:-/tmp}/claude-metrics-XXXXXXXX")
-      jq 'del(.statusLine)' "$CLAUDE_SETTINGS" > "$tmp"
+      jq --arg o "$OURS" --arg m "$MANAGED" '
+        def is_ours:
+          ((.hooks[0]._managed_by // "") == $m)
+          or ((.hooks // []) | any((.command // "") | startswith("claude-metrics-emit")));
+        def strip(arr): (arr // []) | map(select(is_ours | not));
+        (if (.statusLine.command // "") == $o then del(.statusLine) else . end)
+        | (if (.hooks | type) == "object" then
+            .hooks.SessionStart     = strip(.hooks.SessionStart)
+            | .hooks.UserPromptSubmit = strip(.hooks.UserPromptSubmit)
+            | .hooks.Stop             = strip(.hooks.Stop)
+            | .hooks.SessionEnd       = strip(.hooks.SessionEnd)
+            | .hooks |= with_entries(select((.value | length) > 0))
+            | (if (.hooks | length) == 0 then del(.hooks) else . end)
+          else . end)
+      ' "$CLAUDE_SETTINGS" > "$tmp"
       mv "$tmp" "$CLAUDE_SETTINGS"
-      echo "✅ Removed statusLine from $CLAUDE_SETTINGS"
+      echo "✅ Removed claude-metrics statusLine and stale hooks from $CLAUDE_SETTINGS"
     BASH
 
     bin.install "claude-metrics-uninstall"
