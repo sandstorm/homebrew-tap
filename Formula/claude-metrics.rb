@@ -6,7 +6,7 @@ class ClaudeMetrics < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "0.2.0"
+  version "0.3.0"
 
   # jq and nats are intentionally not depends_on — any homebrew/core or
   # cross-tap dep forces Homebrew to clone that tap, which fails on
@@ -34,11 +34,94 @@ class ClaudeMetrics < Formula
       _log() { [ "$DEBUG" = "1" ] && echo "claude-metrics: $*" >&2; return 0; }
       _warn(){ echo "claude-metrics: $*" >&2; }
 
-      # statusLine expects output on stdout — print empty line on any exit.
+      # statusLine expects output on stdout — print empty line on any exit
+      # until we've rendered the real status line below.
       trap 'echo ""' EXIT
 
       STDIN=$(cat)
       [ -n "$STDIN" ] || exit 0
+
+      # --- Render the status line (printed via the EXIT trap) ---------------
+      # We show only the "how much runway" row — no dir/branch/model row:
+      #   ctx:N% tok:Nk +N/-N  │  5hr:N% reset T · 7d:N% reset T
+      # Every percentage is REMAINING budget: green (plenty) → red (depleted).
+      STATUS=""
+      if command -v jq >/dev/null 2>&1; then
+        # Force the C locale so numbers use "." (not "," under de_DE) and the
+        # am/pm + weekday names rendered by date(1) come out in English.
+        # Must be exported so the awk/date child processes inherit it.
+        export LC_ALL=C
+        _sl_col() { printf '\033[%sm%s\033[0m' "$1" "$2"; }
+        _sl_jv()  { printf '%s' "$STDIN" | jq -r "$1" 2>/dev/null; }
+
+        # Color a percentage by remaining budget: high=green, low=red.
+        _sl_pct() {
+          _r=$(printf '%.0f' "$1" 2>/dev/null || echo 0)
+          if   [ "$_r" -ge 60 ]; then _sl_col 32 "$2"
+          elif [ "$_r" -ge 30 ]; then _sl_col 33 "$2"
+          else                        _sl_col 31 "$2"; fi
+        }
+
+        _sl_tok() {
+          if   [ "$1" -ge 1000000 ]; then awk "BEGIN{printf \"%.1fM\",$1/1000000}"
+          elif [ "$1" -ge 1000 ];    then awk "BEGIN{printf \"%.1fk\",$1/1000}"
+          else echo "$1"; fi
+        }
+
+        # "LABEL:N% reset TIME" — shows REMAINING budget, colored.
+        _sl_limit() {
+          _label="$1"; _used="$2"; _at="$3"; _datefmt="$4"
+          { [ -z "$_used" ] || [ "$_used" = "null" ]; } && return 0
+          _remaining=$(printf '%.0f' "$(awk "BEGIN{print 100-$_used}")" 2>/dev/null || echo 0)
+          _reset=""
+          { [ -n "$_at" ] && [ "$_at" != "null" ]; } && \
+            _reset=$(date -r "$_at" "+$_datefmt" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+          _cp=$(_sl_pct "$_remaining" "${_remaining}%")
+          if [ -n "$_reset" ]; then
+            printf '%s:%b %s' "$_label" "$_cp" "$(_sl_col 90 "reset $_reset")"
+          else
+            printf '%s:%b' "$_label" "$_cp"
+          fi
+        }
+
+        _sl_ctx=$(_sl_jv '.context_window.remaining_percentage // empty')
+        _sl_ti=$(_sl_jv '.context_window.total_input_tokens // 0')
+        _sl_to=$(_sl_jv '.context_window.total_output_tokens // 0')
+        _sl_total=$(( ${_sl_ti:-0} + ${_sl_to:-0} ))
+        _sl_la=$(_sl_jv '.cost.total_lines_added // 0')
+        _sl_lr=$(_sl_jv '.cost.total_lines_removed // 0')
+
+        # Group 1: session usage
+        _sl_usage=""
+        _sl_add() { _sl_usage="${_sl_usage:+$_sl_usage  }$1"; }
+        [ -n "$_sl_ctx" ]      && _sl_add "ctx:$(_sl_pct "$_sl_ctx" "${_sl_ctx}%")"
+        [ "$_sl_total" -gt 0 ] && _sl_add "$(_sl_col 36 "tok:$(_sl_tok "$_sl_total")")"
+        { [ "$_sl_la" != "0" ] || [ "$_sl_lr" != "0" ]; } && \
+          _sl_add "$(_sl_col 32 "+$_sl_la")/$(_sl_col 31 "-$_sl_lr")"
+
+        # Group 2: rate-limit budgets
+        _sl_limits=""
+        _sl_addl() { _sl_limits="${_sl_limits:+$_sl_limits  }$1"; }
+        _sl_five=$(_sl_limit "5hr" \
+          "$(_sl_jv '.rate_limits.five_hour.used_percentage // empty')" \
+          "$(_sl_jv '.rate_limits.five_hour.resets_at // empty')" "%-I%p")
+        _sl_seven=$(_sl_limit "7d" \
+          "$(_sl_jv '.rate_limits.seven_day.used_percentage // empty')" \
+          "$(_sl_jv '.rate_limits.seven_day.resets_at // empty')" "%a %-I%p")
+        [ -n "$_sl_five" ]  && _sl_addl "$_sl_five"
+        [ -n "$_sl_seven" ] && _sl_addl "$_sl_seven"
+
+        if [ -n "$_sl_usage" ] && [ -n "$_sl_limits" ]; then
+          STATUS="$_sl_usage  $(_sl_col 90 "│")  $_sl_limits"
+        elif [ -n "$_sl_usage" ]; then
+          STATUS="$_sl_usage"
+        elif [ -n "$_sl_limits" ]; then
+          STATUS="$_sl_limits"
+        fi
+      fi
+
+      # From here on, any exit prints the rendered status line.
+      trap 'printf "%b\n" "$STATUS"' EXIT
 
       CONF="${HOME}/.config/claude-metrics/nats.conf"
       [ -r "$CONF" ] || { _log "no config at $CONF (opt-out)"; exit 0; }
