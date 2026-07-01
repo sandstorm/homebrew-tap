@@ -405,7 +405,10 @@ class ClaudeSafe < Formula
       ;; ---------------------------------------------------------------------------
 
       (deny file-read* file-write*
-        (regex #"/\.env([._][^/]*)?$")
+        ;; .env .env.dev .env_dev …
+        (regex #"/[.]env([._][^/]*)?$")
+        ;; http-client.env.json http-client.private.env.json …
+        (regex #"/[^/]*[.]env[.](json|yaml|yml)?$")
       )
 
       ;; ---------------------------------------------------------------------------
@@ -578,7 +581,10 @@ class ClaudeSafe < Formula
 
       ;; Re-allow .env files
       (allow file-read* file-write*
-        (regex #"/.env([._][^/]*)?$")
+        ;; .env .env.dev .env_dev …
+        (regex #"/[.]env([._][^/]*)?$")
+        ;; http-client.env.json http-client.private.env.json …
+        (regex #"/[^/]*[.]env[.](json|yaml|yml)?$")
       )
     EOS
 
