@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.10.0"
+  version "2.11.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -405,7 +405,10 @@ class ClaudeSafe < Formula
       ;; ---------------------------------------------------------------------------
 
       (deny file-read* file-write*
-        (regex #"/\.env([._][^/]*)?$")
+        ;; .env .env.dev .env_dev …
+        (regex #"/[.]env([._][^/]*)?$")
+        ;; http-client.env.json http-client.private.env.json …
+        (regex #"/[^/]*[.]env[.](json|yaml|yml)?$")
       )
 
       ;; ---------------------------------------------------------------------------
@@ -578,7 +581,10 @@ class ClaudeSafe < Formula
 
       ;; Re-allow .env files
       (allow file-read* file-write*
-        (regex #"/.env([._][^/]*)?$")
+        ;; .env .env.dev .env_dev …
+        (regex #"/[.]env([._][^/]*)?$")
+        ;; http-client.env.json http-client.private.env.json …
+        (regex #"/[^/]*[.]env[.](json|yaml|yml)?$")
       )
     EOS
 
