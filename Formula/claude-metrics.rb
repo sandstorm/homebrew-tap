@@ -6,7 +6,7 @@ class ClaudeMetrics < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "0.4.0"
+  version "0.5.0"
 
   # jq and nats are intentionally not depends_on — any homebrew/core or
   # cross-tap dep forces Homebrew to clone that tap, which fails on
@@ -123,8 +123,21 @@ class ClaudeMetrics < Formula
         fi
       fi
 
-      # From here on, any exit prints the rendered status line.
-      trap 'printf "%b\n" "$STATUS"' EXIT
+      # --- Optional claude-carbon CO2 row ----------------------------------
+      # If the (optional) claude-carbon add-on is installed, render its CO2
+      # line below ours. Best-effort: any failure leaves CARBON_ROW empty and
+      # never breaks the metrics render. Location defaults to
+      # ~/.claude/claude-carbon; override with the CLAUDE_CARBON_DIR env var.
+      CARBON_ROW=""
+      CARBON_DIR="${CLAUDE_CARBON_DIR:-$HOME/.claude/claude-carbon}"
+      case "$CARBON_DIR" in "~/"*) CARBON_DIR="${HOME}/${CARBON_DIR#~/}" ;; esac
+      if [ -x "$CARBON_DIR/scripts/statusline.sh" ]; then
+        CARBON_ROW=$(printf '%s' "$STDIN" | bash "$CARBON_DIR/scripts/statusline.sh" 2>/dev/null)
+      fi
+
+      # From here on, any exit prints the rendered status line(s): metrics row
+      # first, optional carbon row below.
+      trap '{ printf "%b\n" "$STATUS"; [ -n "$CARBON_ROW" ] && printf "%s\n" "$CARBON_ROW"; }' EXIT
 
       CONF="${HOME}/.config/claude-metrics/nats.conf"
       [ -r "$CONF" ] || { _log "no config at $CONF (opt-out)"; exit 0; }
@@ -305,12 +318,27 @@ class ClaudeMetrics < Formula
       # version no longer ships. Left in place those hooks fail on every
       # event with "claude-metrics-emit: command not found", so we strip
       # them here.
+      #
+      # Optional: `--carbon` also enables the claude-carbon CO2 add-on
+      # (clone-at-pinned-commit + SQLite history + a CO2 row below the metrics
+      # row). Without the flag this installs metrics only — no carbon.
 
       set -euo pipefail
 
       MANAGED="sandstorm-claude-metrics"
       CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
       OURS="claude-metrics-statusline"
+
+      # Optional claude-carbon add-on — off unless --carbon is passed.
+      WANT_CARBON=0
+      case "${1:-}" in
+        --carbon|carbon) WANT_CARBON=1 ;;
+        "")              : ;;
+        *) echo "usage: claude-metrics-install [--carbon]" >&2; exit 2 ;;
+      esac
+      CARBON_PIN="5e4551ada88ead9b2ec443fa74a36180da049020"
+      CARBON_REPO="https://github.com/gwittebolle/claude-carbon.git"
+      CARBON_MANAGED="sandstorm-claude-metrics-carbon"
 
       command -v jq >/dev/null 2>&1 || { echo "❌ jq required — brew install jq" >&2; exit 1; }
 
@@ -365,6 +393,71 @@ class ClaudeMetrics < Formula
              claude-metrics-status
 
       EOM
+
+      # --- Optional claude-carbon add-on (--carbon) -------------------------
+      if [ "$WANT_CARBON" = "1" ]; then
+        echo ""
+        echo "── claude-carbon add-on ──────────────────────────────────────"
+        for c in git sqlite3; do
+          command -v "$c" >/dev/null 2>&1 || { echo "❌ $c required for --carbon — brew install $c" >&2; exit 1; }
+        done
+
+        # Default location ~/.claude/claude-carbon (also where carbon keeps its
+        # SQLite DB, so repo + DB share one dir); override with CLAUDE_CARBON_DIR.
+        CARBON_DIR="${CLAUDE_CARBON_DIR:-$HOME/.claude/claude-carbon}"
+        case "$CARBON_DIR" in "~/"*) CARBON_DIR="${HOME}/${CARBON_DIR#~/}" ;; esac
+
+        # Clone fresh / init-in-place (dir already exists, e.g. a prior carbon
+        # DB) / fetch (repo already here), then HARD-PIN to the fixed commit.
+        # Pinning is the supply-chain guard — we never track a moving branch.
+        if [ -d "$CARBON_DIR/.git" ]; then
+          echo "→ Fetching claude-carbon in $CARBON_DIR ..."
+          git -C "$CARBON_DIR" fetch --quiet --tags origin
+        elif [ -d "$CARBON_DIR" ] && [ -n "$(ls -A "$CARBON_DIR" 2>/dev/null)" ]; then
+          echo "→ Initialising claude-carbon repo in existing $CARBON_DIR ..."
+          git -C "$CARBON_DIR" init --quiet
+          git -C "$CARBON_DIR" remote add origin "$CARBON_REPO" 2>/dev/null \
+            || git -C "$CARBON_DIR" remote set-url origin "$CARBON_REPO"
+          git -C "$CARBON_DIR" fetch --quiet --tags origin
+        else
+          echo "→ Cloning claude-carbon to $CARBON_DIR ..."
+          mkdir -p "$(dirname "$CARBON_DIR")"
+          git clone --quiet "$CARBON_REPO" "$CARBON_DIR"
+        fi
+        git -C "$CARBON_DIR" checkout --quiet "$CARBON_PIN"
+        HEAD="$(git -C "$CARBON_DIR" rev-parse HEAD)"
+        [ "$HEAD" = "$CARBON_PIN" ] || { echo "❌ carbon commit pin mismatch: got $HEAD, want $CARBON_PIN" >&2; exit 1; }
+        echo "✅ claude-carbon pinned at $CARBON_PIN ($CARBON_DIR)"
+
+        # DB init + history backfill. The installer flag makes setup.sh skip its
+        # own settings wiring — the metrics statusLine already renders the CO2 row.
+        CLAUDE_CARBON_INSTALLER=1 bash "$CARBON_DIR/scripts/setup.sh"
+
+        # Add carbon's Stop (persist) + SessionStart (safety-rescan) hooks,
+        # tagged so claude-metrics-uninstall can find and remove them.
+        PERSIST="${CARBON_DIR}/scripts/persist-session.sh"
+        RESCAN="${CARBON_DIR}/scripts/safety-rescan.sh"
+        ctmp=$(mktemp "${TMPDIR:-/tmp}/claude-metrics-XXXXXXXX")
+        jq --arg persist "$PERSIST" --arg rescan "$RESCAN" --arg m "$CARBON_MANAGED" '
+          def has_cmd(arr; c): (arr // []) | map(.hooks // []) | flatten | any(.command == c);
+          .hooks = (.hooks // {})
+          | (if has_cmd(.hooks.Stop; $persist) then . else
+              .hooks.Stop = ((.hooks.Stop // []) + [{_managed_by:$m, matcher:"", hooks:[{type:"command", command:$persist}]}]) end)
+          | (if has_cmd(.hooks.SessionStart; $rescan) then . else
+              .hooks.SessionStart = ((.hooks.SessionStart // []) + [{_managed_by:$m, matcher:"", hooks:[{type:"command", command:$rescan}]}]) end)
+        ' "$CLAUDE_SETTINGS" > "$ctmp"
+        mv "$ctmp" "$CLAUDE_SETTINGS"
+        echo "✅ Added carbon Stop/SessionStart hooks"
+
+        # Slash-command symlinks (skip if already present).
+        CMDS="${HOME}/.claude/commands"; mkdir -p "$CMDS"
+        for s in carbon-report carbon-card carbon-update; do
+          src="${CARBON_DIR}/skills/${s}/SKILL.md"; lnk="${CMDS}/${s}.md"
+          { [ -e "$lnk" ] || [ -L "$lnk" ]; } || ln -s "$src" "$lnk"
+        done
+        echo "✅ carbon slash commands: /carbon-report /carbon-card /carbon-update"
+        echo "   Restart Claude Code — a CO2 row now renders below the metrics row."
+      fi
     BASH
 
     bin.install "claude-metrics-install"
@@ -375,11 +468,15 @@ class ClaudeMetrics < Formula
       #
       # Removes the statusLine entry from settings.json if it points at us,
       # and strips any stale claude-metrics-emit lifecycle hooks left over
-      # from the old (<=0.1.0) hook-based design.
+      # from the old (<=0.1.0) hook-based design. If the optional claude-carbon
+      # add-on was enabled, its hooks + slash commands are removed too — this
+      # always tears down everything we (or --carbon) installed. The cloned
+      # repo and SQLite history stay on disk; remove them by hand if wanted.
 
       set -euo pipefail
 
       MANAGED="sandstorm-claude-metrics"
+      CARBON_MANAGED="sandstorm-claude-metrics-carbon"
       CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
       OURS="claude-metrics-statusline"
 
@@ -388,10 +485,13 @@ class ClaudeMetrics < Formula
       [ -f "$CLAUDE_SETTINGS" ] || { echo "ℹ️  $CLAUDE_SETTINGS not found — nothing to do."; exit 0; }
 
       tmp=$(mktemp "${TMPDIR:-/tmp}/claude-metrics-XXXXXXXX")
-      jq --arg o "$OURS" --arg m "$MANAGED" '
+      jq --arg o "$OURS" --arg m "$MANAGED" --arg cm "$CARBON_MANAGED" '
+        # An entry is ours if it carries either managed tag, invokes the old
+        # claude-metrics-emit binary, or (carbon) references claude-carbon.
         def is_ours:
           ((.hooks[0]._managed_by // "") == $m)
-          or ((.hooks // []) | any((.command // "") | startswith("claude-metrics-emit")));
+          or ((.hooks[0]._managed_by // "") == $cm)
+          or ((.hooks // []) | any((.command // "") | (startswith("claude-metrics-emit") or test("claude-carbon"))));
         def strip(arr): (arr // []) | map(select(is_ours | not));
         (if (.statusLine.command // "") == $o then del(.statusLine) else . end)
         | (if (.hooks | type) == "object" then
@@ -404,7 +504,15 @@ class ClaudeMetrics < Formula
           else . end)
       ' "$CLAUDE_SETTINGS" > "$tmp"
       mv "$tmp" "$CLAUDE_SETTINGS"
-      echo "✅ Removed claude-metrics statusLine and stale hooks from $CLAUDE_SETTINGS"
+
+      # Remove carbon slash-command symlinks too (no-op if they were never added).
+      for s in carbon-report carbon-card carbon-update; do
+        lnk="${HOME}/.claude/commands/${s}.md"
+        [ -L "$lnk" ] && rm -f "$lnk"
+      done
+
+      echo "✅ Removed claude-metrics statusLine + stale hooks (and any claude-carbon hooks/commands) from $CLAUDE_SETTINGS"
+      echo "   claude-carbon repo + SQLite history (if any) left on disk: ~/.claude/claude-carbon"
     BASH
 
     bin.install "claude-metrics-uninstall"
@@ -465,6 +573,22 @@ class ClaudeMetrics < Formula
           "")  fail "statusLine not set — run: claude-metrics-install" ;;
           *)   fail "statusLine points elsewhere: '$cmd' (run claude-metrics-install to override)" ;;
         esac
+      fi
+
+      echo ""
+      echo "── claude-carbon add-on (optional) ───────────────────────────"
+      CARBON_PIN="5e4551ada88ead9b2ec443fa74a36180da049020"
+      CARBON_DIR="${CLAUDE_CARBON_DIR:-$HOME/.claude/claude-carbon}"
+      case "$CARBON_DIR" in "~/"*) CARBON_DIR="${HOME}/${CARBON_DIR#~/}" ;; esac
+      if [ -d "$CARBON_DIR/.git" ] && command -v git >/dev/null 2>&1; then
+        HEAD="$(git -C "$CARBON_DIR" rev-parse HEAD 2>/dev/null || echo "?")"
+        if [ "$HEAD" = "$CARBON_PIN" ]; then
+          ok "claude-carbon present and pinned ($CARBON_DIR)"
+        else
+          warn "claude-carbon present but NOT at pinned commit (got ${HEAD:0:12}, want ${CARBON_PIN:0:12}) — run claude-metrics-install --carbon"
+        fi
+      else
+        warn "claude-carbon not installed (optional) — run claude-metrics-install --carbon to add CO2 tracking"
       fi
 
       echo ""
@@ -533,6 +657,25 @@ class ClaudeMetrics < Formula
 
       Remove `~/.config/claude-metrics/nats.conf` — the statusLine exits
       silently with no config.
+
+      ## Optional: CO2 tracking (claude-carbon add-on)
+
+      Installs [claude-carbon](https://github.com/gwittebolle/claude-carbon)
+      pinned to a fixed commit and runs it *alongside* claude-metrics: the
+      metrics row on top, a claude-carbon CO2 row below. It's a flag on the
+      normal installer — no extra commands.
+
+          brew install sqlite3 git    # extra deps carbon needs
+          claude-metrics-install --carbon
+
+      - Pinned to a known-good commit (supply-chain safety); re-run any time.
+      - Cloned into `~/.claude/claude-carbon` (shared with carbon's SQLite DB);
+        override via the `CLAUDE_CARBON_DIR` env var.
+      - Adds carbon's Stop / SessionStart hooks + `/carbon-report`,
+        `/carbon-card`, `/carbon-update` slash commands.
+      - The CO2 row is rendered by `claude-metrics-statusline` itself when the
+        add-on is present — the status line stays a single command.
+      - `claude-metrics-uninstall` removes carbon too (keeps your history DB).
     MD
 
     (share/"claude-metrics").install "nats.conf.example", "USAGE.md"
@@ -555,6 +698,15 @@ class ClaudeMetrics < Formula
         3. claude-metrics-status
 
       Opt out by removing ~/.config/claude-metrics/nats.conf.
+
+      Optional CO2 tracking (claude-carbon add-on):
+        Also needs sqlite3 + git (brew install sqlite3 git), then:
+          claude-metrics-install --carbon
+        Clones claude-carbon pinned to a fixed commit into
+        ~/.claude/claude-carbon, runs its setup, and renders its CO2 row
+        *below* the metrics status line. Location override: CLAUDE_CARBON_DIR
+        env var.
+        Remove with: claude-metrics-uninstall (tears down carbon too)
     EOS
   end
 
@@ -564,7 +716,9 @@ class ClaudeMetrics < Formula
     assert_predicate bin/"claude-metrics-uninstall",  :executable?
     assert_predicate bin/"claude-metrics-status",     :executable?
 
-    # No config → silent exit, status line is just an empty newline.
+    # No config and no carbon add-on → silent exit, status line is just an
+    # empty newline. (The optional carbon CO2 row stays absent unless
+    # ~/.claude/claude-carbon/scripts/statusline.sh exists.)
     ENV["HOME"] = testpath.to_s
     out = shell_output("echo '{}' | #{bin}/claude-metrics-statusline")
     assert_equal "\n", out
