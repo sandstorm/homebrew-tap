@@ -5,12 +5,12 @@
 class Synco < Formula
   desc "Sandstorm Synco"
   homepage "https://github.com/sandstorm/synco"
-  version "2.4.2"
+  version "2.4.3"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/synco/releases/download/v2.4.2/synco_Darwin_x86_64.tar.gz"
-      sha256 "c84203b1ee321e6d10a84e191ee5368ef985817f7e61ff2d885c01acf78f7c21"
+      url "https://github.com/sandstorm/synco/releases/download/v2.4.3/synco_Darwin_x86_64.tar.gz"
+      sha256 "8a84e39effa495b91708c4a82d1a21e4c6e990938d6854065ff5d36143d97cff"
 
       define_method(:install) do
         libexec.install Dir["*"]
@@ -18,8 +18,8 @@ class Synco < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/synco/releases/download/v2.4.2/synco_Darwin_arm64.tar.gz"
-      sha256 "809dc0cfa9487ef3fdfdf3c25517af88a70da8327e576eb28cfe6c8f04a48b1b"
+      url "https://github.com/sandstorm/synco/releases/download/v2.4.3/synco_Darwin_arm64.tar.gz"
+      sha256 "7e8b1513ec7d1ef428a646ad42426209fc4414e13614881d1a2f01aff6456abf"
 
       define_method(:install) do
         libexec.install Dir["*"]
@@ -30,24 +30,24 @@ class Synco < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/synco/releases/download/v2.4.2/synco_Linux_x86_64.tar.gz"
-      sha256 "7cb8907e4536601288353a4e866732c36626a2407b91a4134bcb6191991ead95"
+      url "https://github.com/sandstorm/synco/releases/download/v2.4.3/synco_Linux_x86_64.tar.gz"
+      sha256 "05ddcbbb0db4c0da8fb90cb19adfa345fafe544e0fa91a614e162bd329e6f00a"
       define_method(:install) do
         libexec.install Dir["*"]
         bin.write_exec_script libexec/"synco"
       end
     end
     if Hardware::CPU.arm? && !Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/synco/releases/download/v2.4.2/synco_Linux_arm.tar.gz"
-      sha256 "200b88cb1f2c722ecc45d69e61b4e4fafa3ebc2d92f25ff88cdaa5510218fa69"
+      url "https://github.com/sandstorm/synco/releases/download/v2.4.3/synco_Linux_arm.tar.gz"
+      sha256 "4083dc53170c1ffd704a97a6cdb84c0f36aab5ff8047896a7cd646961df9c529"
       define_method(:install) do
         libexec.install Dir["*"]
         bin.write_exec_script libexec/"synco"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/sandstorm/synco/releases/download/v2.4.2/synco_Linux_arm64.tar.gz"
-      sha256 "eae880244e2661d0d9cc959f12fd3fbea3f276b9f633b399eeb98017b5500731"
+      url "https://github.com/sandstorm/synco/releases/download/v2.4.3/synco_Linux_arm64.tar.gz"
+      sha256 "a51d602dd5fc8d453b8a6ee147db0d216833b0954daf5b6b56eb7959f0a97efd"
       define_method(:install) do
         libexec.install Dir["*"]
         bin.write_exec_script libexec/"synco"
