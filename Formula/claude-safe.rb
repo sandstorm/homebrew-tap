@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.11.0"
+  version "2.12.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -563,6 +563,18 @@ class ClaudeSafe < Formula
 
       (allow process-exec* file-read*
         (subpath "/Applications/OrbStack.app/")
+      )
+
+      ;; ---------------------------------------------------------------------------
+      ;; allow Shottr screenshot temp dir — reads only
+      ;;
+      ;; Shottr (screenshot tool) drops captures here. Claude needs to read them
+      ;; when the user shares a screenshot. home-subpath resolves per-user, so this
+      ;; works for arbitrary users (not just one hardcoded home).
+      ;; ---------------------------------------------------------------------------
+
+      (allow file-read*
+        (home-subpath "/Library/Containers/cc.ffitch.shottr/Data/tmp/cc.ffitch.shottr")
       )
     EOS
 
