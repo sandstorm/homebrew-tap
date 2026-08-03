@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.12.0"
+  version "2.13.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -58,6 +58,11 @@ class ClaudeSafe < Formula
         --enable=sdd        SDD decision-graph skill — required for the /sdd skill.
                             Re-allows localhost binding (Claude Code's own nested
                             sandbox proxy needs it) + .git access.
+        --enable=intellij   JetBrains IDE integration (Claude Code plugin).
+                            Re-allows loopback to the IDE's WebSocket port ONLY and
+                            passes the plugin's env vars through. Required for the
+                            IntelliJ native diff viewer, selection sharing and /ide —
+                            without it the plugin reports "Claude failed to start".
 
       SAFEHOUSE FEATURES (pass-through, comma-separated)
         --enable=FEATURES   1password, agent-browser, browser-native-messaging,
@@ -113,6 +118,9 @@ class ClaudeSafe < Formula
       # Detect --mistral, --codex and --allow-localhost flags, strip them from the arg list
       cmd="claude"
       allow_localhost_ports=""
+      # --env means "pass the whole host env"; safehouse rejects combining it with
+      # --env-pass, so --enable=intellij must not add one in that case.
+      pass_full_env=false
       _filtered=()
       for arg in "$@"; do
         if [[ "$arg" == "--mistral" ]]; then
@@ -122,6 +130,7 @@ class ClaudeSafe < Formula
         elif [[ "$arg" == --allow-localhost=* ]]; then
           allow_localhost_ports="${arg#--allow-localhost=}"
         else
+          [[ "$arg" == "--env" ]] && pass_full_env=true
           _filtered+=("$arg")
         fi
       done
@@ -163,23 +172,24 @@ class ClaudeSafe < Formula
         done
       }
 
-      # --enable=sdd is handled specially: its sandbox profile re-allows localhost
-      # binding, which must be appended AFTER network-isolation.sb to win (SBPL is
-      # last-match-wins). So we pull "sdd" out of the --enable value here, set a
-      # flag, and append the profile later (see below). Runs in the parent shell
-      # (not a subshell) so it can set enable_sdd.
+      # --enable=sdd and --enable=intellij are handled specially: both re-allow
+      # localhost, which must be appended AFTER network-isolation.sb to win (SBPL is
+      # last-match-wins). So we pull those names out of the --enable value here, set
+      # a flag, and append the profile later (see below). Runs in the parent shell
+      # (not a subshell) so it can set the flags.
       enable_sdd=false
+      enable_intellij=false
       _enable_filtered=""
-      _filter_sdd() {
+      _filter_special() {
         local value="$1" name
         local out=()
         local IFS=','
         for name in $value; do
-          if [[ "$name" == "sdd" ]]; then
-            enable_sdd=true
-          else
-            out+=("$name")
-          fi
+          case "$name" in
+            sdd)                     enable_sdd=true ;;
+            intellij|jetbrains|idea) enable_intellij=true ;;
+            *)                       out+=("$name") ;;
+          esac
         done
         _enable_filtered="${out[*]}"
       }
@@ -191,7 +201,7 @@ class ClaudeSafe < Formula
       while [[ $i -lt ${#args[@]} ]]; do
         arg="${args[$i]}"
         if [[ "$arg" == --enable=* ]]; then
-          _filter_sdd "${arg#--enable=}"
+          _filter_special "${arg#--enable=}"
           if [[ -n "$_enable_filtered" ]]; then
             while IFS= read -r -d '' token; do
               expanded+=("$token")
@@ -199,7 +209,7 @@ class ClaudeSafe < Formula
           fi
         elif [[ "$arg" == "--enable" && $((i+1)) -lt ${#args[@]} ]]; then
           ((i++))
-          _filter_sdd "${args[$i]}"
+          _filter_special "${args[$i]}"
           if [[ -n "$_enable_filtered" ]]; then
             while IFS= read -r -d '' token; do
               expanded+=("$token")
@@ -272,6 +282,61 @@ class ClaudeSafe < Formula
       # network-isolation.sb so its localhost allows override the localhost denies.
       if [[ "$enable_sdd" == true ]]; then
         safehouse_args+=("--append-profile=${PROFILES_DIR}/sdd.sb")
+      fi
+
+      # ---------------------------------------------------------------------------
+      # --enable=intellij: JetBrains IDE integration (Claude Code plugin)
+      #
+      # The plugin runs a WebSocket server on a random loopback port and writes
+      # ~/.claude/ide/<port>.lock. Claude Code connects OUT to that port; everything
+      # IDE-side rides on that one connection (native diff viewer, selection sharing,
+      # /ide). network-isolation.sb denies all of loopback, so the connect fails with
+      # EPERM — the plugin then reports "Claude failed to start" even though Claude
+      # itself runs fine in the terminal.
+      #
+      # Rather than re-opening localhost wholesale (what --enable=sdd does), we
+      # discover the port the IDE is actually listening on and whitelist only that.
+      # No other local service (DB, dev server, other MCP server) becomes reachable.
+      # ---------------------------------------------------------------------------
+      if [[ "$enable_intellij" == true ]]; then
+        _ide_ports=()
+
+        # The plugin exports this into the terminal it launches Claude from.
+        if [[ -n "${CLAUDE_CODE_SSE_PORT:-}" ]]; then
+          _ide_ports+=("$CLAUDE_CODE_SSE_PORT")
+        fi
+
+        # Fallback: the lockfile basename IS the port.
+        for _lock in "$HOME"/.claude/ide/*.lock; do
+          [[ -e "$_lock" ]] || continue
+          _lock_port="$(basename "$_lock" .lock)"
+          case "$_lock_port" in
+            ""|*[!0-9]*) ;;
+            *) _ide_ports+=("$_lock_port") ;;
+          esac
+        done
+
+        if [[ ${#_ide_ports[@]} -eq 0 ]]; then
+          echo "⚠️  --enable=intellij: no JetBrains IDE port found — IDE features will stay off." >&2
+          echo "    CLAUDE_CODE_SSE_PORT is unset and ~/.claude/ide/ holds no *.lock file." >&2
+          echo "    Open the project in IntelliJ with the Claude Code plugin active and start" >&2
+          echo "    claude-safe from the IDE terminal, or pass --allow-localhost=PORT." >&2
+        else
+          # Feed the discovered ports into the existing --allow-localhost machinery.
+          for _ide_port in "${_ide_ports[@]}"; do
+            if [[ -z "$allow_localhost_ports" ]]; then
+              allow_localhost_ports="$_ide_port"
+            else
+              allow_localhost_ports="${allow_localhost_ports},${_ide_port}"
+            fi
+          done
+        fi
+
+        # The plugin identifies itself to Claude through env vars that safehouse's
+        # sanitized allowlist drops. --env-pass silently skips names that are unset.
+        if [[ "$pass_full_env" != true ]]; then
+          safehouse_args+=("--env-pass=CLAUDE_CODE_SSE_PORT,TERMINAL_EMULATOR,CLAUDE_CODE_IDE_HOST_OVERRIDE,FORCE_CODE_TERMINAL")
+        fi
       fi
 
       # Generate temp profile for --allow-localhost=PORTS
@@ -789,6 +854,7 @@ class ClaudeSafe < Formula
         'codex:Codex config (~/.codex)'
         'vault:Re-allow vault file access'
         'sdd:SDD decision-graph skill (localhost proxy + .git) — needed for /sdd'
+        'intellij:JetBrains IDE integration — native diff viewer, /ide, plugin startup'
         '1password:1Password integration'
         'agent-browser:Agent browser (implies chromium)'
         'browser-native-messaging:Browser native messaging'

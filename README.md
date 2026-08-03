@@ -53,6 +53,7 @@ Custom profiles (claude-safe specific):
 | `--enable=codex` | Codex config (`~/.codex`) — auto-enabled by `codex-safe` |
 | `--enable=vault` | Re-allow `.vault` file access |
 | `--enable=sdd` | SDD decision-graph skill (required for the `/sdd` skill). Re-allows localhost binding (Claude Code's own nested sandbox proxy needs it) + `.git` access |
+| `--enable=intellij` | JetBrains IDE integration (Claude Code plugin). Whitelists **only** the IDE's WebSocket port on loopback and passes the plugin's env vars through — see [IntelliJ / JetBrains](#intellij--jetbrains) |
 
 Safehouse built-in features (pass-through, comma-separated): `1password`, `agent-browser`, `browser-native-messaging`, `chromium-full`, `chromium-headless`, `cleanshot`, `clipboard`, `cloud-credentials`, `cloud-storage`, `docker`, `electron`, `keychain`, `kubectl`, `lldb`, `macos-gui`, `microphone`, `playwright-chrome`, `process-control`, `shell-init`, `spotlight`, `ssh`, `vscode`, `xcode`, `all-agents`, `all-apps`, `wide-read`.
 
@@ -62,3 +63,31 @@ claude-safe --enable=docker,env       # Docker + .env access
 ```
 
 Run `claude-safe -h` for the full, always-current list.
+
+### IntelliJ / JetBrains
+
+The Claude Code JetBrains plugin talks to the CLI over a WebSocket on a random loopback port
+(advertised via `~/.claude/ide/<port>.lock` and `CLAUDE_CODE_SSE_PORT`). `claude-safe` denies all
+loopback traffic by default, so that connection fails with `EPERM`. Claude still works in the IDE
+terminal, but the plugin reports **"Claude failed to start"** and every IDE-side feature stays
+dead — native diff viewer, selection sharing, `/ide`.
+
+Fix: launch Claude with `--enable=intellij`, which whitelists only the port the IDE is listening
+on and forwards the plugin's env vars into the sandbox.
+
+Point the plugin at a wrapper instead of the bare CLI (Settings → Tools → Claude Code → CLI path,
+or the plugin's "Claude command"):
+
+```bash
+# ~/.local/bin/claude-safe-intellij
+#!/bin/bash
+exec claude-safe --enable=intellij "$@"
+```
+
+```bash
+chmod +x ~/.local/bin/claude-safe-intellij
+```
+
+Port discovery needs the IDE to be up first: open the project in IntelliJ with the plugin active,
+then start Claude. If the plugin's port cannot be found, `claude-safe` prints a warning and leaves
+loopback closed instead of silently widening the sandbox.
