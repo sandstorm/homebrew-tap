@@ -75,6 +75,53 @@ claude-safe --enable=localhost            # all ports (same thing)
 
 Run `claude-safe -h` for the full, always-current list.
 
+### Deny lists (`.claude-safe-deny`)
+
+claude-safe reads deny lists **unconditionally — no flag, no opt-in**. A deny list can only *restrict* access, never widen it, so there is no trust decision to make.
+
+Three layers, all applied if present:
+
+| File | Scope |
+|------|-------|
+| `~/.config/claude-safe/deny` | global, every project |
+| `<git root>/.claude-safe-deny` | project-wide — commit it |
+| `./.claude-safe-deny` | the directory claude-safe was started in |
+
+One pattern per line; `#` and `;` start a comment:
+
+```gitignore
+# ~/.config/claude-safe/deny
+*.pem               # any file ending in .pem, anywhere
+bw                  # any file or dir named "bw" — blocks the binary
+id_rsa
+
+# <git root>/.claude-safe-deny
+customer-data/      # any path component named "customer-data", anywhere
+./fixtures/real-dump.sql
+/etc/some-shared-secret
+~/Documents/Taxes
+```
+
+| Pattern form | Becomes |
+|---|---|
+| `NAME` or `NAME/` | any path component with that name, at any depth |
+| `*.EXT` (wildcard in a bare name) | `*` matches within one path segment |
+| `./rel`, `/abs`, `~/under-home` (anything containing `/`) | that exact subtree |
+
+Everything listed is denied for **read, write and exec**.
+
+Properties worth knowing:
+
+- The generated profile is appended **last**, after the Sandstorm guards, the `--enable=…` profiles and the localhost profile. SBPL is last-match-wins, so **nothing can re-open a denied path** — not `--enable=git`, not `--add-dirs=`, not a `.safehouse` workdir config.
+- The deny files themselves get a terminal `(deny file-write* …)`, so the agent cannot edit its own leash.
+- It fails closed: an unsupported pattern (`**`, `?`, `[]`, a quote or backslash, a wildcard inside a path, or anything that would match everything) aborts the run with `file:line` instead of silently applying a deny list it had to guess at.
+
+Inspect what is active:
+
+```bash
+claude-safe --show-deny     # prints the generated profile to stderr, then runs
+```
+
 ### DS4 (dwarfstar.sh)
 
 [DS4](https://dwarfstar.sh) is a local inference engine that is run from its checkout (`./ds4`, `./ds4-agent`, helper scripts, model weights) rather than from `PATH`. Two sandboxed commands are provided:

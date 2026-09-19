@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.13.0"
+  version "2.14.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -57,6 +57,7 @@ class ClaudeSafe < Formula
         config/database.yml, config/credentials.json
                           blocked (read)         NOT re-enableable
         bw / rbw          blocked (exec+read)    Bitwarden CLIs
+        .claude-safe-deny blocked (read+write+exec) your own deny list, see below
         localhost         blocked (network)       re-enable: --allow-localhost[=PORTS]
 
       CUSTOM PROFILES (claude-safe specific)
@@ -96,6 +97,23 @@ class ClaudeSafe < Formula
         --explain             Print effective grants summary to stderr
         --stdout              Print policy text (don't execute)
 
+      DENY LISTS (claude-safe specific, always on — no flag needed)
+        Patterns in these files are denied read+write+exec, and CANNOT be
+        re-opened by --enable=..., --add-dirs=... or a .safehouse config:
+          ~/.config/claude-safe/deny     global, all projects
+          <git root>/.claude-safe-deny   project-wide
+          ./.claude-safe-deny            current directory
+        One pattern per line, # or ; for comments:
+          secrets/        any path component named "secrets", anywhere
+          bw              any file/dir named "bw", anywhere (blocks the binary)
+          *.pem           any file ending in .pem, anywhere
+          ./customer-data path, relative to the deny file
+          /etc/foo        absolute path
+          ~/Documents     path under \\$HOME
+        Bad patterns (**, ?, [], quotes, backslashes, wildcards in paths,
+        patterns matching everything) are a hard error naming file:line.
+        --show-deny       Print the generated deny profile to stderr
+
       NETWORK ISOLATION
         --allow-localhost=PORTS     Comma-separated localhost ports to whitelist
                                     Example: --allow-localhost=3000,5432
@@ -127,6 +145,8 @@ class ClaudeSafe < Formula
         claude-safe --allow-localhost=3000    Allow only localhost:3000
         claude-safe --allow-localhost         Allow all localhost ports
 
+        claude-safe --show-deny               Show active deny rules
+
         ds4-safe                              Sandboxed DS4 chat
         ds4-agent-safe --enable=git           DS4 agent with .git access
 
@@ -149,6 +169,7 @@ class ClaudeSafe < Formula
       cmd="claude"
       allow_localhost_ports=""
       allow_localhost_all=false
+      show_deny=false
       _filtered=()
       for arg in "$@"; do
         if [[ "$arg" == "--mistral" ]]; then
@@ -159,6 +180,8 @@ class ClaudeSafe < Formula
           cmd="ds4"
         elif [[ "$arg" == "--ds4-agent" ]]; then
           cmd="ds4-agent"
+        elif [[ "$arg" == "--show-deny" ]]; then
+          show_deny=true
         elif [[ "$arg" == "--allow-localhost" ]]; then
           # Bare flag (no =PORTS) → all localhost ports
           allow_localhost_all=true
@@ -412,6 +435,153 @@ class ClaudeSafe < Formula
           done
         fi
         safehouse_args+=("--append-profile=$_tmpprofile")
+      fi
+
+      # ---------------------------------------------------------------------------
+      # Persistent deny lists — .claude-safe-deny
+      #
+      # Read unconditionally (no trust flag): a deny file can only RESTRICT access,
+      # never widen it, so loading it needs no trust decision — unlike safehouse's
+      # .safehouse config, which grants and is therefore opt-in.
+      #
+      # Loaded in this order (all of them, if present):
+      #   ~/.config/claude-safe/deny      global, all projects
+      #   <git root>/.claude-safe-deny    project-wide
+      #   ./.claude-safe-deny             current directory
+      #
+      # Line format (one pattern per line, # or ; comments, blank lines ignored):
+      #   secrets/        any path component named "secrets", anywhere
+      #   bw              any file or dir named "bw", anywhere (blocks the binary)
+      #   *.pem           any file whose name ends in .pem, anywhere
+      #   ./customer-data a path — resolved relative to the deny file
+      #   /etc/foo        an absolute path
+      #   ~/Documents     a path under $HOME
+      #
+      # Anything else (**, ?, [] and wildcards inside path patterns) is rejected
+      # with file:line — the script fails closed rather than applying a deny list
+      # it had to guess at.
+      #
+      # The generated profile is appended LAST, after every other profile, so these
+      # denies cannot be re-opened by --enable=..., --add-dirs=... or a .safehouse
+      # config. The deny files themselves are made read-only to the agent.
+      # ---------------------------------------------------------------------------
+      DENY_FILENAME=".claude-safe-deny"
+      GLOBAL_DENY_FILE="$HOME/.config/claude-safe/deny"
+
+      _deny_files=()
+      _deny_rules=()
+
+      _deny_fail() {
+        echo "claude-safe: $1" >&2
+        exit 1
+      }
+
+      # Escape a literal string for use inside an SBPL (regex #"…") pattern.
+      _deny_escape_regex() {
+        printf '%s' "$1" | sed -e 's/[][\\\\^$.|?+(){}]/\\\\&/g'
+      }
+
+      # Escape a literal string for use inside an SBPL "…" string.
+      _deny_escape_sb() {
+        printf '%s' "$1" | sed -e 's/[\\\\"]/\\\\&/g'
+      }
+
+      _deny_parse_file() {
+        local file="$1"
+        local dir line trimmed core name escaped rx path seen
+        local lineno=0
+        local any='[^/]*'
+
+        dir="$(cd "$(dirname "$file")" && pwd)" || _deny_fail "cannot resolve directory of $file"
+        # Canonicalize, so the same file reached via two candidate paths
+        # (e.g. git root == cwd) is only applied once.
+        file="${dir%/}/$(basename "$file")"
+        for seen in "${_deny_files[@]}"; do
+          [[ "$seen" == "$file" ]] && return 0
+        done
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          lineno=$((lineno + 1))
+          trimmed="${line#"${line%%[![:space:]]*}"}"
+          trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+          [[ -z "$trimmed" ]] && continue
+          [[ "${trimmed:0:1}" == "#" || "${trimmed:0:1}" == ";" ]] && continue
+
+          case "$trimmed" in
+            *'"'*|*'\\'*)
+              _deny_fail "$file:$lineno: pattern contains a quote or backslash — refusing, because it cannot be embedded in a sandbox profile safely" ;;
+            *'**'*|*'?'*|*'['*|*']'*)
+              _deny_fail "$file:$lineno: unsupported pattern '$trimmed' (no **, ?, [ or ]) — use NAME, NAME/, *.EXT or a path" ;;
+            '/'|'/*'|'*'|'.'|'./'|'~'|'~/'|'$HOME')
+              _deny_fail "$file:$lineno: pattern '$trimmed' would deny everything" ;;
+          esac
+
+          core="${trimmed%/}"
+          if [[ "$core" == */* ]]; then
+            # Path pattern → (subpath "…")
+            case "$core" in
+              '~/'*) path="$HOME/${core#\\~/}" ;;
+              /*)    path="$core" ;;
+              *)     path="${dir%/}/${core#./}" ;;
+            esac
+            if [[ "$path" == *'*'* ]]; then
+              _deny_fail "$file:$lineno: wildcards are not supported in path patterns ('$trimmed')"
+            fi
+            path="${path%/}"
+            if [[ -z "$path" || "$path" == "/" || "$path" == "$HOME" ]]; then
+              _deny_fail "$file:$lineno: pattern '$trimmed' would deny everything"
+            fi
+            _deny_rules+=("(subpath \\"$(_deny_escape_sb "$path")\\")")
+          else
+            # Name pattern → any path component with that name, anywhere
+            name="$core"
+            escaped="$(_deny_escape_regex "$name")"
+            rx="${escaped//\\*/$any}"
+            _deny_rules+=("(regex #\\"/${rx}(/|\\$)\\")")
+          fi
+        done < "$file"
+
+        _deny_files+=("$file")
+      }
+
+      _deny_candidates=("$GLOBAL_DENY_FILE")
+      _deny_git_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+      if [[ -n "$_deny_git_root" && "$_deny_git_root" != "$PWD" ]]; then
+        _deny_candidates+=("${_deny_git_root}/${DENY_FILENAME}")
+      fi
+      _deny_candidates+=("${PWD}/${DENY_FILENAME}")
+
+      for _deny_candidate in "${_deny_candidates[@]}"; do
+        [[ -f "$_deny_candidate" ]] && _deny_parse_file "$_deny_candidate"
+      done
+
+      if [[ ${#_deny_rules[@]} -gt 0 ]]; then
+        _denyprofile=$(_mktemp_profile deny)
+        {
+          echo '(version 1)'
+          echo ";; Generated by claude-safe from: ${_deny_files[*]}"
+          echo ''
+          echo '(deny file-read* file-write* process-exec*'
+          for _deny_rule in "${_deny_rules[@]}"; do
+            echo "  $_deny_rule"
+          done
+          echo ')'
+          echo ''
+          echo ';; The agent must not be able to edit its own deny list.'
+          for _deny_file in "${_deny_files[@]}"; do
+            echo "(deny file-write* (literal \\"$(_deny_escape_sb "$_deny_file")\\"))"
+          done
+        } > "$_denyprofile"
+
+        # Appended last → nothing can re-allow these paths.
+        safehouse_args+=("--append-profile=$_denyprofile")
+
+        echo "🚫 claude-safe: ${#_deny_rules[@]} deny rule(s) from ${_deny_files[*]}" >&2
+        if [[ "$show_deny" == true ]]; then
+          echo "--- generated deny profile ---" >&2
+          cat "$_denyprofile" >&2
+          echo "------------------------------" >&2
+        fi
       fi
 
       exec env SAFEHOUSE_WORKDIR=. safehouse \
@@ -1024,6 +1194,7 @@ class ClaudeSafe < Formula
         '--mistral[Use Vibe/Mistral instead of Claude]' \\
         '--ds4[Use DS4 chat instead of Claude]' \\
         '--ds4-agent[Use the DS4 agent instead of Claude]' \\
+        '--show-deny[Print the generated .claude-safe-deny profile]' \\
         '--allow-localhost=[Whitelist localhost ports (or "all")]:ports: ' \\
         '--allow-localhost[Whitelist ALL localhost ports]' \\
         '(-)--[Stop processing safehouse args]' \\
@@ -1110,5 +1281,11 @@ class ClaudeSafe < Formula
     # DS4 is optional — without a checkout, ds4-safe must fail with a clear hint.
     output = shell_output("DS4_HOME=#{testpath}/nonexistent #{bin}/ds4-safe 2>&1", 1)
     assert_match "DS4 executable not found", output
+
+    # Deny lists: a bad pattern must abort with file:line, not be applied blindly.
+    (testpath/".claude-safe-deny").write("**/nope\n")
+    output = shell_output("cd #{testpath} && HOME=#{testpath} #{bin}/claude-safe --show-deny 2>&1", 1)
+    assert_match ".claude-safe-deny:1", output
+    assert_match "unsupported pattern", output
   end
 end
