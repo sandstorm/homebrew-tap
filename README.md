@@ -54,6 +54,7 @@ Custom profiles (claude-safe specific):
 | `--enable=vault` | Re-allow `.vault` file access |
 | `--enable=localhost` | Re-allow **all** localhost ports (synonym for bare `--allow-localhost`) |
 | `--enable=sdd` | SDD decision-graph skill (required for the `/sdd` skill). Re-allows localhost binding (Claude Code's own nested sandbox proxy needs it) + `.git` access |
+| `--enable=sandbox` | Claude Code's own sandbox (`/sandbox`) inside claude-safe. Re-allows **all** localhost ports (srt's proxies bind random high ports; SBPL has no port ranges) + the srt control socket in `$TMPDIR` |
 
 Safehouse built-in features (pass-through, comma-separated): `1password`, `agent-browser`, `browser-native-messaging`, `chromium-full`, `chromium-headless`, `cleanshot`, `clipboard`, `cloud-credentials`, `cloud-storage`, `docker`, `electron`, `keychain`, `kubectl`, `lldb`, `macos-gui`, `microphone`, `playwright-chrome`, `process-control`, `shell-init`, `spotlight`, `ssh`, `vscode`, `xcode`, `all-agents`, `all-apps`, `wide-read`.
 
@@ -71,6 +72,7 @@ claude-safe --allow-localhost=3000,5432   # only these ports
 claude-safe --allow-localhost             # all ports
 claude-safe --allow-localhost=all         # all ports (same thing)
 claude-safe --enable=localhost            # all ports (same thing)
+claude-safe --enable=sandbox              # all ports + srt socket (Claude Code /sandbox)
 ```
 
 Run `claude-safe -h` for the full, always-current list.

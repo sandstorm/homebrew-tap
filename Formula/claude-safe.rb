@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.14.0"
+  version "2.15.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -71,6 +71,9 @@ class ClaudeSafe < Formula
         --enable=sdd        SDD decision-graph skill — required for the /sdd skill.
                             Re-allows localhost binding (Claude Code's own nested
                             sandbox proxy needs it) + .git access.
+        --enable=sandbox    Claude Code's own sandbox (/sandbox) inside claude-safe.
+                            Re-allows ALL localhost ports (srt proxies bind random
+                            high ports) + the srt control socket in \\$TMPDIR.
 
       SAFEHOUSE FEATURES (pass-through, comma-separated)
         --enable=FEATURES   1password, agent-browser, browser-native-messaging,
@@ -255,6 +258,7 @@ class ClaudeSafe < Formula
       # here, set a flag, and append the grants later (see below). Runs in the
       # parent shell (not a subshell) so it can set the flags.
       enable_sdd=false
+      enable_sandbox=false
       _enable_filtered=""
       _filter_sdd() {
         local value="$1" name
@@ -263,6 +267,11 @@ class ClaudeSafe < Formula
         for name in $value; do
           if [[ "$name" == "sdd" ]]; then
             enable_sdd=true
+          elif [[ "$name" == "sandbox" ]]; then
+            # Claude Code's own sandbox (/sandbox): srt control socket in
+            # $TMPDIR + proxies on random localhost ports → all localhost.
+            enable_sandbox=true
+            allow_localhost_all=true
           elif [[ "$name" == "localhost" ]]; then
             # --enable=localhost is a synonym for --allow-localhost (all ports)
             allow_localhost_all=true
@@ -361,6 +370,16 @@ class ClaudeSafe < Formula
       # network-isolation.sb so its localhost allows override the localhost denies.
       if [[ "$enable_sdd" == true ]]; then
         safehouse_args+=("--append-profile=${PROFILES_DIR}/sdd.sb")
+      fi
+
+      # --enable=sandbox: unix-socket grants for Claude Code's sandbox runtime.
+      # The localhost part is covered by allow_localhost_all (set above).
+      if [[ "$enable_sandbox" == true ]]; then
+        safehouse_args+=("--append-profile=${PROFILES_DIR}/sandbox.sb")
+      fi
+
+      if [[ "$allow_localhost_all" == true || "$enable_sdd" == true || "$enable_sandbox" == true ]]; then
+        echo "⚠️  claude-safe: ALL localhost ports are open — any local service (databases, dev servers, admin UIs) is reachable from the agent." >&2
       fi
 
       # Temp profiles generated below are cleaned up on exit.
@@ -1100,6 +1119,34 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/sandbox.sb").write <<~EOS
+      ;; Custom sandbox profile: sandbox
+      ;;
+      ;; Re-enables what Claude Code's own sandbox (/sandbox, "srt") needs:
+      ;;   - unix socket bind/connect for $TMPDIR/srt-*.sock
+      ;;       srt starts a control/multiplexer socket there. Seatbelt treats
+      ;;       unix-socket bind()/connect() as network ops, so file access to
+      ;;       /var/folders is not enough → "EPERM: operation not permitted,
+      ;;       listen '/var/folders/.../T/srt-mux-….sock'".
+      ;;   - localhost bind/inbound/outbound on ALL ports
+      ;;       srt's HTTP/SOCKS proxies listen on port 0 (random ephemeral port,
+      ;;       49152–65535). SBPL only accepts a single port or "*" — no ranges —
+      ;;       so this cannot be narrowed. claude-safe generates these rules via
+      ;;       its --allow-localhost profile, not in this file.
+      ;;
+      ;; Activated via: claude-safe --enable=sandbox
+      ;; Appended AFTER network-isolation.sb (SBPL is last-match-wins).
+
+      (version 1)
+
+      (allow network-bind network-inbound
+        (local unix-socket (path-regex #"^(/private)?/var/folders/[^/]+/[^/]+/T/srt-[^/]*\\.sock$"))
+      )
+      (allow network-outbound
+        (remote unix-socket (path-regex #"^(/private)?/var/folders/[^/]+/[^/]+/T/srt-[^/]*\\.sock$"))
+      )
+    EOS
+
     (buildpath/"profiles/claude-metrics.sb").write <<~EOS
       ;; Sandbox profile: claude-metrics
       ;;
@@ -1136,6 +1183,7 @@ class ClaudeSafe < Formula
         'vault:Re-allow vault file access'
         'localhost:Re-allow ALL localhost ports'
         'sdd:SDD decision-graph skill (localhost proxy + .git) — needed for /sdd'
+        'sandbox:Claude Code /sandbox (ALL localhost + srt socket)'
         '1password:1Password integration'
         'agent-browser:Agent browser (implies chromium)'
         'browser-native-messaging:Browser native messaging'
