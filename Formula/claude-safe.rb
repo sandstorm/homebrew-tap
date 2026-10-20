@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.15.0"
+  version "2.16.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -88,6 +88,7 @@ class ClaudeSafe < Formula
         --add-dirs-ro=PATHS   Colon-separated read-only paths
         --add-dirs=PATHS      Colon-separated read/write paths
         --workdir=DIR         Override working directory (default: .)
+        ~/.sandstorm-agent-kit is always readable (read-only).
 
       ENVIRONMENT
         --env                 Pass full host environment to agent
@@ -750,6 +751,20 @@ class ClaudeSafe < Formula
       ;; - allow OrbStack binary
 
       (version 1)
+
+      ;; ---------------------------------------------------------------------------
+      ;; allow ~/.sandstorm-agent-kit — reads only
+      ;;
+      ;; Shared Sandstorm agent kit (skills, prompts, configs). Always readable,
+      ;; never writable, so the agent cannot tamper with it.
+      ;;
+      ;; Placed BEFORE the denies below on purpose (SBPL is last-match-wins), so
+      ;; .env / .git / *.key / secrets/ inside it stay blocked.
+      ;; ---------------------------------------------------------------------------
+
+      (allow file-read*
+        (home-subpath "/.sandstorm-agent-kit")
+      )
 
       ;; ---------------------------------------------------------------------------
       ;; deny .env files — reads and writes
