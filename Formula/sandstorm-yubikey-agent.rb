@@ -5,25 +5,23 @@
 class SandstormYubikeyAgent < Formula
   desc ""
   homepage "https://github.com/sandstorm/yubikey-agent"
-  version "0.1.5-p7"
+  version "1.0.0"
   depends_on :macos
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/sandstorm/yubikey-agent/releases/download/v0.1.5-p7/yubikey-agent_0.1.5-p7_Darwin_arm64.tar.gz"
-      sha256 "e7df89cc2ed4f7f889d92f3cc8187153cdab569761e80d61cd47f77ba0d624cf"
+  if Hardware::CPU.intel?
+    url "https://github.com/sandstorm/yubikey-agent/releases/download/v1.0.0/yubikey-agent_Darwin_x86_64.tar.gz"
+    sha256 "6500dca119b98e5d06302362491d7f3bda6516f07d7ca5a76de6c442a87b7a3d"
 
-      def install
-        bin.install "yubikey-agent"
-      end
+    define_method(:install) do
+      bin.install "yubikey-agent"
     end
-    if Hardware::CPU.intel?
-      url "https://github.com/sandstorm/yubikey-agent/releases/download/v0.1.5-p7/yubikey-agent_0.1.5-p7_Darwin_x86_64.tar.gz"
-      sha256 "4ccf40a014c0fe37c30825d565d49bf23bb9ca212cec2442930fa1413201f6dd"
+  end
+  if Hardware::CPU.arm?
+    url "https://github.com/sandstorm/yubikey-agent/releases/download/v1.0.0/yubikey-agent_Darwin_arm64.tar.gz"
+    sha256 "4678ce73c31d67a2813ff9d1c4d4166519b335c51d9cb593f4557a68c132ced5"
 
-      def install
-        bin.install "yubikey-agent"
-      end
+    define_method(:install) do
+      bin.install "yubikey-agent"
     end
   end
 

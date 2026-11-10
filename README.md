@@ -52,7 +52,9 @@ Custom profiles (claude-safe specific):
 | `--enable=mistral` | Vibe config (`~/.vibe`) — auto-enabled by `vibe-safe` |
 | `--enable=codex` | Codex config (`~/.codex`) — auto-enabled by `codex-safe` |
 | `--enable=vault` | Re-allow `.vault` file access |
+| `--enable=localhost` | Re-allow **all** localhost ports (synonym for bare `--allow-localhost`) |
 | `--enable=sdd` | SDD decision-graph skill (required for the `/sdd` skill). Re-allows localhost binding (Claude Code's own nested sandbox proxy needs it) + `.git` access |
+| `--enable=sandbox` | Claude Code's own sandbox (`/sandbox`) inside claude-safe. Re-allows **all** localhost ports (srt's proxies bind random high ports; SBPL has no port ranges) + the srt control socket in `$TMPDIR` |
 | `--enable=intellij` | JetBrains IDE integration (Claude Code plugin). Whitelists **only** the IDE's WebSocket port on loopback and passes the plugin's env vars through — see [IntelliJ / JetBrains](#intellij--jetbrains) |
 
 Safehouse built-in features (pass-through, comma-separated): `1password`, `agent-browser`, `browser-native-messaging`, `chromium-full`, `chromium-headless`, `cleanshot`, `clipboard`, `cloud-credentials`, `cloud-storage`, `docker`, `electron`, `keychain`, `kubectl`, `lldb`, `macos-gui`, `microphone`, `playwright-chrome`, `process-control`, `shell-init`, `spotlight`, `ssh`, `vscode`, `xcode`, `all-agents`, `all-apps`, `wide-read`.
@@ -62,7 +64,86 @@ claude-safe --enable=docker           # allow Docker commands
 claude-safe --enable=docker,env       # Docker + .env access
 ```
 
+### Localhost
+
+Localhost/loopback traffic is blocked by default. Re-enable it per run:
+
+```bash
+claude-safe --allow-localhost=3000,5432   # only these ports
+claude-safe --allow-localhost             # all ports
+claude-safe --allow-localhost=all         # all ports (same thing)
+claude-safe --enable=localhost            # all ports (same thing)
+claude-safe --enable=sandbox              # all ports + srt socket (Claude Code /sandbox)
+```
+
 Run `claude-safe -h` for the full, always-current list.
+
+### Deny lists (`.claude-safe-deny`)
+
+claude-safe reads deny lists **unconditionally — no flag, no opt-in**. A deny list can only *restrict* access, never widen it, so there is no trust decision to make.
+
+Three layers, all applied if present:
+
+| File | Scope |
+|------|-------|
+| `~/.config/claude-safe/deny` | global, every project |
+| `<git root>/.claude-safe-deny` | project-wide — commit it |
+| `./.claude-safe-deny` | the directory claude-safe was started in |
+
+One pattern per line; `#` and `;` start a comment:
+
+```gitignore
+# ~/.config/claude-safe/deny
+*.pem               # any file ending in .pem, anywhere
+bw                  # any file or dir named "bw" — blocks the binary
+id_rsa
+
+# <git root>/.claude-safe-deny
+customer-data/      # any path component named "customer-data", anywhere
+./fixtures/real-dump.sql
+/etc/some-shared-secret
+~/Documents/Taxes
+```
+
+| Pattern form | Becomes |
+|---|---|
+| `NAME` or `NAME/` | any path component with that name, at any depth |
+| `*.EXT` (wildcard in a bare name) | `*` matches within one path segment |
+| `./rel`, `/abs`, `~/under-home` (anything containing `/`) | that exact subtree |
+
+Everything listed is denied for **read, write and exec**.
+
+Properties worth knowing:
+
+- The generated profile is appended **last**, after the Sandstorm guards, the `--enable=…` profiles and the localhost profile. SBPL is last-match-wins, so **nothing can re-open a denied path** — not `--enable=git`, not `--add-dirs=`, not a `.safehouse` workdir config.
+- The deny files themselves get a terminal `(deny file-write* …)`, so the agent cannot edit its own leash.
+- It fails closed: an unsupported pattern (`**`, `?`, `[]`, a quote or backslash, a wildcard inside a path, or anything that would match everything) aborts the run with `file:line` instead of silently applying a deny list it had to guess at.
+
+Inspect what is active:
+
+```bash
+claude-safe --show-deny     # prints the generated profile to stderr, then runs
+```
+
+### DS4 (dwarfstar.sh)
+
+[DS4](https://dwarfstar.sh) is a local inference engine that is run from its checkout (`./ds4`, `./ds4-agent`, helper scripts, model weights) rather than from `PATH`. Two sandboxed commands are provided:
+
+| Command | Effect |
+|---------|--------|
+| `ds4-safe` | Interactive DS4 chat inside the sandbox |
+| `ds4-agent-safe` | DS4 coding agent inside the sandbox (in-process, no server needed) |
+| `ds4-unsafe` / `ds4-agent-unsafe` | Same, without sandboxing |
+
+Because the checkout location differs per machine, configure it in `~/.zshrc` **before** the `source .../aliases.zsh` line:
+
+```bash
+export DS4_HOME=~/src/ds4                  # checkout (default: ~/src/ds4)
+export DS4_MODELS=/Volumes/ssd/ds4-models  # weights  (default: $DS4_HOME/models)
+export DS4_CACHE=~/.ds4                    # config + KV cache (default: ~/.ds4)
+```
+
+Inside the sandbox DS4 gets `$DS4_HOME` and `$DS4_MODELS` read+execute, and `$DS4_CACHE` plus `~/.ds4_history` / `~/.ds4_agent_history` read+write. All other claude-safe restrictions (including localhost blocking) stay in place.
 
 ### IntelliJ / JetBrains
 

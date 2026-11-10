@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.13.0"
+  version "2.16.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -21,14 +21,25 @@ class ClaudeSafe < Formula
       CUSTOM_PROFILES=(env git flutter mistral codex vault)
       PROFILES_DIR="#{share}/profiles"
 
+      # DS4 (https://dwarfstar.sh) is a local inference engine that is used from
+      # its checkout directory (./ds4, ./ds4-agent, helper scripts, model weights)
+      # — it is not installed on PATH. The checkout is not always in the same
+      # place, so these are overridable from ~/.zshrc.
+      DS4_HOME="${DS4_HOME:-$HOME/src/ds4}"
+      DS4_MODELS="${DS4_MODELS:-$DS4_HOME/models}"
+      DS4_CACHE="${DS4_CACHE:-$HOME/.ds4}"
+
       usage() {
         cat <<EOF
-      Usage: $(basename "$0") [options] [-- claude-args...]
-             vibe-safe   [options] [-- vibe-args...]
-             codex-safe  [options] [-- codex-args...]
+      Usage: $(basename "$0")  [options] [-- claude-args...]
+             vibe-safe        [options] [-- vibe-args...]
+             codex-safe       [options] [-- codex-args...]
+             ds4-safe         [options] [-- ds4-args...]
+             ds4-agent-safe   [options] [-- ds4-agent-args...]
 
       WHAT CLAUDE-SAFE DOES
-        Runs Claude Code (or Vibe for Mistral Code, or Codex for OpenAI) inside an agent-safehouse sandbox.
+        Runs Claude Code (or Vibe for Mistral Code, Codex for OpenAI, or DS4 /
+        DS4-agent for local inference) inside an agent-safehouse sandbox.
         By default, the agent can ONLY read/write the current directory.
 
       DEFAULT RESTRICTIONS (Sandstorm policy)
@@ -46,7 +57,8 @@ class ClaudeSafe < Formula
         config/database.yml, config/credentials.json
                           blocked (read)         NOT re-enableable
         bw / rbw          blocked (exec+read)    Bitwarden CLIs
-        localhost         blocked (network)       re-enable: --allow-localhost=PORT
+        .claude-safe-deny blocked (read+write+exec) your own deny list, see below
+        localhost         blocked (network)       re-enable: --allow-localhost[=PORTS]
 
       CUSTOM PROFILES (claude-safe specific)
         --enable=env        Re-allow .env file access
@@ -55,9 +67,13 @@ class ClaudeSafe < Formula
         --enable=mistral    Vibe config (~/.vibe) — auto-enabled by vibe-safe
         --enable=codex      Codex config (~/.codex) — auto-enabled by codex-safe
         --enable=vault      Re-allow .vault file access
+        --enable=localhost  Re-allow ALL localhost ports (= --allow-localhost)
         --enable=sdd        SDD decision-graph skill — required for the /sdd skill.
                             Re-allows localhost binding (Claude Code's own nested
                             sandbox proxy needs it) + .git access.
+        --enable=sandbox    Claude Code's own sandbox (/sandbox) inside claude-safe.
+                            Re-allows ALL localhost ports (srt proxies bind random
+                            high ports) + the srt control socket in \\$TMPDIR.
         --enable=intellij   JetBrains IDE integration (Claude Code plugin).
                             Re-allows loopback to the IDE's WebSocket port ONLY and
                             passes the plugin's env vars through. Required for the
@@ -77,6 +93,7 @@ class ClaudeSafe < Formula
         --add-dirs-ro=PATHS   Colon-separated read-only paths
         --add-dirs=PATHS      Colon-separated read/write paths
         --workdir=DIR         Override working directory (default: .)
+        ~/.sandstorm-agent-kit is always readable (read-only).
 
       ENVIRONMENT
         --env                 Pass full host environment to agent
@@ -89,9 +106,43 @@ class ClaudeSafe < Formula
         --explain             Print effective grants summary to stderr
         --stdout              Print policy text (don't execute)
 
+      DENY LISTS (claude-safe specific, always on — no flag needed)
+        Patterns in these files are denied read+write+exec, and CANNOT be
+        re-opened by --enable=..., --add-dirs=... or a .safehouse config:
+          ~/.config/claude-safe/deny     global, all projects
+          <git root>/.claude-safe-deny   project-wide
+          ./.claude-safe-deny            current directory
+        One pattern per line, # or ; for comments:
+          secrets/        any path component named "secrets", anywhere
+          bw              any file/dir named "bw", anywhere (blocks the binary)
+          *.pem           any file ending in .pem, anywhere
+          ./customer-data path, relative to the deny file
+          /etc/foo        absolute path
+          ~/Documents     path under \\$HOME
+        Bad patterns (**, ?, [], quotes, backslashes, wildcards in paths,
+        patterns matching everything) are a hard error naming file:line.
+        --show-deny       Print the generated deny profile to stderr
+
       NETWORK ISOLATION
         --allow-localhost=PORTS     Comma-separated localhost ports to whitelist
                                     Example: --allow-localhost=3000,5432
+        --allow-localhost           ALL localhost ports (no port list)
+        --allow-localhost=all       Same as the bare flag
+        --enable=localhost          Same as the bare flag
+
+      DS4 (https://dwarfstar.sh) — local inference engine
+        ds4-safe             Interactive DS4 chat, sandboxed
+        ds4-agent-safe       DS4 coding agent, sandboxed (in-process, no server)
+
+        DS4 lives in a checkout, not on PATH. Configure it in ~/.zshrc:
+          export DS4_HOME=~/src/ds4      # checkout  (default: ~/src/ds4)
+          export DS4_MODELS=/Volumes/ssd/ds4-models
+                                        # weights    (default: \\$DS4_HOME/models)
+          export DS4_CACHE=~/.ds4        # config + KV cache (default: ~/.ds4)
+
+        Inside the sandbox DS4 gets: \\$DS4_HOME and \\$DS4_MODELS read+execute,
+        \\$DS4_CACHE and ~/.ds4_history / ~/.ds4_agent_history read+write.
+        Everything else stays under the normal claude-safe restrictions.
 
       EXAMPLES
         claude-safe                           Basic sandboxed Claude
@@ -101,10 +152,17 @@ class ClaudeSafe < Formula
         claude-safe -- --resume               Pass --resume to Claude
 
         claude-safe --allow-localhost=3000    Allow only localhost:3000
+        claude-safe --allow-localhost         Allow all localhost ports
+
+        claude-safe --show-deny               Show active deny rules
+
+        ds4-safe                              Sandboxed DS4 chat
+        ds4-agent-safe --enable=git           DS4 agent with .git access
 
       MORE INFO
         safehouse -h          Full safehouse documentation
         claude-unsafe -h      Claude without sandbox
+        ds4-unsafe -h         DS4 without sandbox
 
       EOF
       }
@@ -115,9 +173,12 @@ class ClaudeSafe < Formula
         esac
       done
 
-      # Detect --mistral, --codex and --allow-localhost flags, strip them from the arg list
+      # Detect --mistral, --codex, --ds4, --ds4-agent and --allow-localhost flags,
+      # strip them from the arg list
       cmd="claude"
       allow_localhost_ports=""
+      allow_localhost_all=false
+      show_deny=false
       # --env means "pass the whole host env"; safehouse rejects combining it with
       # --env-pass, so --enable=intellij must not add one in that case.
       pass_full_env=false
@@ -127,8 +188,22 @@ class ClaudeSafe < Formula
           cmd="vibe"
         elif [[ "$arg" == "--codex" ]]; then
           cmd="codex"
+        elif [[ "$arg" == "--ds4" ]]; then
+          cmd="ds4"
+        elif [[ "$arg" == "--ds4-agent" ]]; then
+          cmd="ds4-agent"
+        elif [[ "$arg" == "--show-deny" ]]; then
+          show_deny=true
+        elif [[ "$arg" == "--allow-localhost" ]]; then
+          # Bare flag (no =PORTS) → all localhost ports
+          allow_localhost_all=true
         elif [[ "$arg" == --allow-localhost=* ]]; then
-          allow_localhost_ports="${arg#--allow-localhost=}"
+          _value="${arg#--allow-localhost=}"
+          if [[ "$_value" == "all" || "$_value" == "*" || -z "$_value" ]]; then
+            allow_localhost_all=true
+          else
+            allow_localhost_ports="$_value"
+          fi
         else
           [[ "$arg" == "--env" ]] && pass_full_env=true
           _filtered+=("$arg")
@@ -144,6 +219,21 @@ class ClaudeSafe < Formula
       if [[ "$cmd" == "codex" ]] && ! command -v codex &>/dev/null; then
         echo "Error: codex (OpenAI CLI) is not installed. Run: brew install --cask codex" >&2
         exit 1
+      fi
+
+      # DS4 is run from its checkout by absolute path — it is not on PATH.
+      ds4_mode=false
+      if [[ "$cmd" == "ds4" || "$cmd" == "ds4-agent" ]]; then
+        ds4_mode=true
+        _ds4_bin="${DS4_HOME}/${cmd}"
+        if [[ ! -x "$_ds4_bin" ]]; then
+          echo "Error: DS4 executable not found at $_ds4_bin" >&2
+          echo "       Install DS4 from https://dwarfstar.sh, then point DS4_HOME at" >&2
+          echo "       the checkout in your ~/.zshrc, e.g.:" >&2
+          echo "         export DS4_HOME=~/src/ds4" >&2
+          exit 1
+        fi
+        cmd="$_ds4_bin"
       fi
 
       if [[ "$cmd" == "vibe" ]]; then
@@ -172,12 +262,13 @@ class ClaudeSafe < Formula
         done
       }
 
-      # --enable=sdd and --enable=intellij are handled specially: both re-allow
-      # localhost, which must be appended AFTER network-isolation.sb to win (SBPL is
-      # last-match-wins). So we pull those names out of the --enable value here, set
-      # a flag, and append the profile later (see below). Runs in the parent shell
-      # (not a subshell) so it can set the flags.
+      # --enable=sdd and --enable=localhost and --enable=intellij are handled specially: they re-allow
+      # localhost, which must be appended AFTER network-isolation.sb to win (SBPL
+      # is last-match-wins). So we pull those names out of the --enable value
+      # here, set a flag, and append the grants later (see below). Runs in the
+      # parent shell (not a subshell) so it can set the flags.
       enable_sdd=false
+      enable_sandbox=false
       enable_intellij=false
       _enable_filtered=""
       _filter_special() {
@@ -185,11 +276,21 @@ class ClaudeSafe < Formula
         local out=()
         local IFS=','
         for name in $value; do
-          case "$name" in
-            sdd)                     enable_sdd=true ;;
-            intellij|jetbrains|idea) enable_intellij=true ;;
-            *)                       out+=("$name") ;;
-          esac
+          if [[ "$name" == "sdd" ]]; then
+            enable_sdd=true
+          elif [[ "$name" == "sandbox" ]]; then
+            # Claude Code's own sandbox (/sandbox): srt control socket in
+            # $TMPDIR + proxies on random localhost ports → all localhost.
+            enable_sandbox=true
+            allow_localhost_all=true
+          elif [[ "$name" == "localhost" ]]; then
+            # --enable=localhost is a synonym for --allow-localhost (all ports)
+            allow_localhost_all=true
+          elif [[ "$name" == "intellij" ]];then
+            enable_intellij=true ;;
+          else
+            out+=("$name")
+          fi
         done
         _enable_filtered="${out[*]}"
       }
@@ -284,6 +385,69 @@ class ClaudeSafe < Formula
         safehouse_args+=("--append-profile=${PROFILES_DIR}/sdd.sb")
       fi
 
+      # --enable=sandbox: unix-socket grants for Claude Code's sandbox runtime.
+      # The localhost part is covered by allow_localhost_all (set above).
+      if [[ "$enable_sandbox" == true ]]; then
+        safehouse_args+=("--append-profile=${PROFILES_DIR}/sandbox.sb")
+      fi
+
+      if [[ "$allow_localhost_all" == true || "$enable_sdd" == true || "$enable_sandbox" == true ]]; then
+        echo "⚠️  claude-safe: ALL localhost ports are open — any local service (databases, dev servers, admin UIs) is reachable from the agent." >&2
+      fi
+
+      # Temp profiles generated below are cleaned up on exit.
+      _tmpprofiles=()
+      trap 'rm -f "${_tmpprofiles[@]}"' EXIT
+
+      _mktemp_profile() {
+        local f
+        f=$(mktemp "${TMPDIR:-/tmp}/claude-safe-$1-XXXXXX")
+        mv "$f" "${f}.sb"
+        _tmpprofiles+=("${f}.sb")
+        printf '%s' "${f}.sb"
+      }
+
+      # ---------------------------------------------------------------------------
+      # DS4 (https://dwarfstar.sh)
+      #
+      # DS4 is run from a checkout whose location differs per machine, so the
+      # grants cannot live in a static .sb file — they are generated here from
+      # DS4_HOME / DS4_MODELS / DS4_CACHE.
+      #
+      #   $DS4_HOME    read + execute  (ds4, ds4-agent, helper scripts)
+      #   $DS4_MODELS  read            (model weights; may live outside DS4_HOME)
+      #   $DS4_CACHE   read + write    (config + KV cache, default ~/.ds4)
+      #   ~/.ds4_history, ~/.ds4_agent_history   read + write
+      #
+      # Appended AFTER the guards profile so these allows win (SBPL is
+      # last-match-wins) — e.g. model files under a path the guards would
+      # otherwise deny.
+      # ---------------------------------------------------------------------------
+      if [[ "$ds4_mode" == true ]]; then
+        mkdir -p "$DS4_CACHE"
+
+        _ds4profile=$(_mktemp_profile ds4)
+        cat > "$_ds4profile" <<EOSB
+      (version 1)
+      (allow process-exec* file-read* (subpath "$DS4_HOME"))
+      (allow file-read* (subpath "$DS4_MODELS"))
+      (allow file-read* file-write* (subpath "$DS4_CACHE"))
+      (allow file-read* file-write*
+        (literal "$HOME/.ds4_history")
+        (literal "$HOME/.ds4_agent_history"))
+      EOSB
+        safehouse_args+=("--append-profile=$_ds4profile")
+
+        # Also tell safehouse about the directories, so its own bookkeeping
+        # (and --explain output) matches the profile above.
+        safehouse_args+=("--add-dirs-ro=${DS4_HOME}:${DS4_MODELS}")
+        safehouse_args+=("--add-dirs=${DS4_CACHE}")
+      fi
+
+      # Generate temp profile for --allow-localhost / --allow-localhost=PORTS.
+      # Appended after network-isolation.sb, so these allows override its denies.
+      if [[ "$allow_localhost_all" == true || -n "$allow_localhost_ports" ]]; then
+        _tmpprofile=$(_mktemp_profile localhost)
       # ---------------------------------------------------------------------------
       # --enable=intellij: JetBrains IDE integration (Claude Code plugin)
       #
@@ -346,15 +510,171 @@ class ClaudeSafe < Formula
         _tmpprofile="${_tmpprofile}.sb"
         trap 'rm -f "$_tmpprofile"' EXIT
         echo '(version 1)' > "$_tmpprofile"
-        IFS=',' read -ra _ports <<< "$allow_localhost_ports"
-        for _port in "${_ports[@]}"; do
+        if [[ "$allow_localhost_all" == true ]]; then
+          # All ports — "*" as the port in an (ip) filter matches any port.
           cat >> "$_tmpprofile" <<EOSB
+      (allow network-outbound (remote ip "localhost:*"))
+      (allow network-bind (local ip "localhost:*"))
+      (allow network-inbound (local ip "localhost:*"))
+      EOSB
+        else
+          IFS=',' read -ra _ports <<< "$allow_localhost_ports"
+          for _port in "${_ports[@]}"; do
+            cat >> "$_tmpprofile" <<EOSB
       (allow network-outbound (remote ip "localhost:$_port"))
       (allow network-bind (local ip "localhost:$_port"))
       (allow network-inbound (local ip "localhost:$_port"))
       EOSB
-        done
+          done
+        fi
         safehouse_args+=("--append-profile=$_tmpprofile")
+      fi
+
+      # ---------------------------------------------------------------------------
+      # Persistent deny lists — .claude-safe-deny
+      #
+      # Read unconditionally (no trust flag): a deny file can only RESTRICT access,
+      # never widen it, so loading it needs no trust decision — unlike safehouse's
+      # .safehouse config, which grants and is therefore opt-in.
+      #
+      # Loaded in this order (all of them, if present):
+      #   ~/.config/claude-safe/deny      global, all projects
+      #   <git root>/.claude-safe-deny    project-wide
+      #   ./.claude-safe-deny             current directory
+      #
+      # Line format (one pattern per line, # or ; comments, blank lines ignored):
+      #   secrets/        any path component named "secrets", anywhere
+      #   bw              any file or dir named "bw", anywhere (blocks the binary)
+      #   *.pem           any file whose name ends in .pem, anywhere
+      #   ./customer-data a path — resolved relative to the deny file
+      #   /etc/foo        an absolute path
+      #   ~/Documents     a path under $HOME
+      #
+      # Anything else (**, ?, [] and wildcards inside path patterns) is rejected
+      # with file:line — the script fails closed rather than applying a deny list
+      # it had to guess at.
+      #
+      # The generated profile is appended LAST, after every other profile, so these
+      # denies cannot be re-opened by --enable=..., --add-dirs=... or a .safehouse
+      # config. The deny files themselves are made read-only to the agent.
+      # ---------------------------------------------------------------------------
+      DENY_FILENAME=".claude-safe-deny"
+      GLOBAL_DENY_FILE="$HOME/.config/claude-safe/deny"
+
+      _deny_files=()
+      _deny_rules=()
+
+      _deny_fail() {
+        echo "claude-safe: $1" >&2
+        exit 1
+      }
+
+      # Escape a literal string for use inside an SBPL (regex #"…") pattern.
+      _deny_escape_regex() {
+        printf '%s' "$1" | sed -e 's/[][\\\\^$.|?+(){}]/\\\\&/g'
+      }
+
+      # Escape a literal string for use inside an SBPL "…" string.
+      _deny_escape_sb() {
+        printf '%s' "$1" | sed -e 's/[\\\\"]/\\\\&/g'
+      }
+
+      _deny_parse_file() {
+        local file="$1"
+        local dir line trimmed core name escaped rx path seen
+        local lineno=0
+        local any='[^/]*'
+
+        dir="$(cd "$(dirname "$file")" && pwd)" || _deny_fail "cannot resolve directory of $file"
+        # Canonicalize, so the same file reached via two candidate paths
+        # (e.g. git root == cwd) is only applied once.
+        file="${dir%/}/$(basename "$file")"
+        for seen in "${_deny_files[@]}"; do
+          [[ "$seen" == "$file" ]] && return 0
+        done
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          lineno=$((lineno + 1))
+          trimmed="${line#"${line%%[![:space:]]*}"}"
+          trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+          [[ -z "$trimmed" ]] && continue
+          [[ "${trimmed:0:1}" == "#" || "${trimmed:0:1}" == ";" ]] && continue
+
+          case "$trimmed" in
+            *'"'*|*'\\'*)
+              _deny_fail "$file:$lineno: pattern contains a quote or backslash — refusing, because it cannot be embedded in a sandbox profile safely" ;;
+            *'**'*|*'?'*|*'['*|*']'*)
+              _deny_fail "$file:$lineno: unsupported pattern '$trimmed' (no **, ?, [ or ]) — use NAME, NAME/, *.EXT or a path" ;;
+            '/'|'/*'|'*'|'.'|'./'|'~'|'~/'|'$HOME')
+              _deny_fail "$file:$lineno: pattern '$trimmed' would deny everything" ;;
+          esac
+
+          core="${trimmed%/}"
+          if [[ "$core" == */* ]]; then
+            # Path pattern → (subpath "…")
+            case "$core" in
+              '~/'*) path="$HOME/${core#\\~/}" ;;
+              /*)    path="$core" ;;
+              *)     path="${dir%/}/${core#./}" ;;
+            esac
+            if [[ "$path" == *'*'* ]]; then
+              _deny_fail "$file:$lineno: wildcards are not supported in path patterns ('$trimmed')"
+            fi
+            path="${path%/}"
+            if [[ -z "$path" || "$path" == "/" || "$path" == "$HOME" ]]; then
+              _deny_fail "$file:$lineno: pattern '$trimmed' would deny everything"
+            fi
+            _deny_rules+=("(subpath \\"$(_deny_escape_sb "$path")\\")")
+          else
+            # Name pattern → any path component with that name, anywhere
+            name="$core"
+            escaped="$(_deny_escape_regex "$name")"
+            rx="${escaped//\\*/$any}"
+            _deny_rules+=("(regex #\\"/${rx}(/|\\$)\\")")
+          fi
+        done < "$file"
+
+        _deny_files+=("$file")
+      }
+
+      _deny_candidates=("$GLOBAL_DENY_FILE")
+      _deny_git_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+      if [[ -n "$_deny_git_root" && "$_deny_git_root" != "$PWD" ]]; then
+        _deny_candidates+=("${_deny_git_root}/${DENY_FILENAME}")
+      fi
+      _deny_candidates+=("${PWD}/${DENY_FILENAME}")
+
+      for _deny_candidate in "${_deny_candidates[@]}"; do
+        [[ -f "$_deny_candidate" ]] && _deny_parse_file "$_deny_candidate"
+      done
+
+      if [[ ${#_deny_rules[@]} -gt 0 ]]; then
+        _denyprofile=$(_mktemp_profile deny)
+        {
+          echo '(version 1)'
+          echo ";; Generated by claude-safe from: ${_deny_files[*]}"
+          echo ''
+          echo '(deny file-read* file-write* process-exec*'
+          for _deny_rule in "${_deny_rules[@]}"; do
+            echo "  $_deny_rule"
+          done
+          echo ')'
+          echo ''
+          echo ';; The agent must not be able to edit its own deny list.'
+          for _deny_file in "${_deny_files[@]}"; do
+            echo "(deny file-write* (literal \\"$(_deny_escape_sb "$_deny_file")\\"))"
+          done
+        } > "$_denyprofile"
+
+        # Appended last → nothing can re-allow these paths.
+        safehouse_args+=("--append-profile=$_denyprofile")
+
+        echo "🚫 claude-safe: ${#_deny_rules[@]} deny rule(s) from ${_deny_files[*]}" >&2
+        if [[ "$show_deny" == true ]]; then
+          echo "--- generated deny profile ---" >&2
+          cat "$_denyprofile" >&2
+          echo "------------------------------" >&2
+        fi
       fi
 
       exec env SAFEHOUSE_WORKDIR=. safehouse \
@@ -379,6 +699,20 @@ class ClaudeSafe < Formula
     EOS
 
     bin.install "codex-safe"
+
+    (buildpath/"ds4-safe").write <<~EOS
+      #!/bin/bash
+      exec "#{bin}/claude-safe" --ds4 "$@"
+    EOS
+
+    bin.install "ds4-safe"
+
+    (buildpath/"ds4-agent-safe").write <<~EOS
+      #!/bin/bash
+      exec "#{bin}/claude-safe" --ds4-agent "$@"
+    EOS
+
+    bin.install "ds4-agent-safe"
 
     (buildpath/"aliases.zsh").write <<~EOS
       # Managed by brew install sandstorm/tap/claude-safe — do not edit manually
@@ -437,6 +771,45 @@ class ClaudeSafe < Formula
           command codex "$@"
         fi
       }
+
+      # DS4 (https://dwarfstar.sh) — local inference engine.
+      # DS4 lives in a checkout and is normally invoked as ./ds4 from there.
+      # Set DS4_HOME in this file (before sourcing aliases.zsh) if your checkout
+      # is not at ~/src/ds4:
+      #   export DS4_HOME=~/src/ds4
+      # Optional: DS4_MODELS (weights, default $DS4_HOME/models)
+      #           DS4_CACHE  (config + KV cache, default ~/.ds4)
+
+      ds4() {
+        echo "⚠️  Use 'ds4-safe' for sandboxed DS4 (recommended) or 'ds4-unsafe' for unrestricted access." >&2
+        return 1
+      }
+
+      ds4-agent() {
+        echo "⚠️  Use 'ds4-agent-safe' for the sandboxed DS4 agent (recommended) or 'ds4-agent-unsafe' for unrestricted access." >&2
+        return 1
+      }
+
+      # Runs the DS4 binary from the checkout, without a sandbox.
+      _ds4_run_unsafe() {
+        local name="$1"; shift
+        local home="${DS4_HOME:-$HOME/src/ds4}"
+        if [[ ! -x "$home/$name" ]]; then
+          echo "Error: DS4 executable not found at $home/$name" >&2
+          echo "       Set DS4_HOME in your ~/.zshrc to your DS4 checkout." >&2
+          return 1
+        fi
+        # Run from the current directory (like ds4-safe does), not from the checkout.
+        "$home/$name" "$@"
+      }
+
+      ds4-unsafe() {
+        _ds4_run_unsafe ds4 "$@"
+      }
+
+      ds4-agent-unsafe() {
+        _ds4_run_unsafe ds4-agent "$@"
+      }
     EOS
 
     share.install "aliases.zsh"
@@ -451,6 +824,20 @@ class ClaudeSafe < Formula
       ;; - allow OrbStack binary
 
       (version 1)
+
+      ;; ---------------------------------------------------------------------------
+      ;; allow ~/.sandstorm-agent-kit — reads only
+      ;;
+      ;; Shared Sandstorm agent kit (skills, prompts, configs). Always readable,
+      ;; never writable, so the agent cannot tamper with it.
+      ;;
+      ;; Placed BEFORE the denies below on purpose (SBPL is last-match-wins), so
+      ;; .env / .git / *.key / secrets/ inside it stay blocked.
+      ;; ---------------------------------------------------------------------------
+
+      (allow file-read*
+        (home-subpath "/.sandstorm-agent-kit")
+      )
 
       ;; ---------------------------------------------------------------------------
       ;; deny .env files — reads and writes
@@ -607,7 +994,7 @@ class ClaudeSafe < Formula
       (deny process-exec* file-read*
         (regex #"(^|/)rbw$")
       )
-      
+
       ;; ---------------------------------------------------------------------------
       ;; deny ~/.kube — reads and writes
       ;;
@@ -747,7 +1134,8 @@ class ClaudeSafe < Formula
       ;;
       ;; Blocks localhost/loopback traffic.
       ;;
-      ;; Re-enable localhost: --allow-localhost=PORT
+      ;; Re-enable localhost: --allow-localhost=PORTS (selected ports)
+      ;;                       --allow-localhost / --enable=localhost (all ports)
       ;;
       ;; NOTE: Private network deny rules use wildcard IP patterns (e.g.
       ;; "10.*:*") whose support in SBPL is undocumented. These rules are
@@ -819,6 +1207,34 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/sandbox.sb").write <<~EOS
+      ;; Custom sandbox profile: sandbox
+      ;;
+      ;; Re-enables what Claude Code's own sandbox (/sandbox, "srt") needs:
+      ;;   - unix socket bind/connect for $TMPDIR/srt-*.sock
+      ;;       srt starts a control/multiplexer socket there. Seatbelt treats
+      ;;       unix-socket bind()/connect() as network ops, so file access to
+      ;;       /var/folders is not enough → "EPERM: operation not permitted,
+      ;;       listen '/var/folders/.../T/srt-mux-….sock'".
+      ;;   - localhost bind/inbound/outbound on ALL ports
+      ;;       srt's HTTP/SOCKS proxies listen on port 0 (random ephemeral port,
+      ;;       49152–65535). SBPL only accepts a single port or "*" — no ranges —
+      ;;       so this cannot be narrowed. claude-safe generates these rules via
+      ;;       its --allow-localhost profile, not in this file.
+      ;;
+      ;; Activated via: claude-safe --enable=sandbox
+      ;; Appended AFTER network-isolation.sb (SBPL is last-match-wins).
+
+      (version 1)
+
+      (allow network-bind network-inbound
+        (local unix-socket (path-regex #"^(/private)?/var/folders/[^/]+/[^/]+/T/srt-[^/]*\\.sock$"))
+      )
+      (allow network-outbound
+        (remote unix-socket (path-regex #"^(/private)?/var/folders/[^/]+/[^/]+/T/srt-[^/]*\\.sock$"))
+      )
+    EOS
+
     (buildpath/"profiles/claude-metrics.sb").write <<~EOS
       ;; Sandbox profile: claude-metrics
       ;;
@@ -853,7 +1269,9 @@ class ClaudeSafe < Formula
         'mistral:Vibe config (~/.vibe)'
         'codex:Codex config (~/.codex)'
         'vault:Re-allow vault file access'
+        'localhost:Re-allow ALL localhost ports'
         'sdd:SDD decision-graph skill (localhost proxy + .git) — needed for /sdd'
+        'sandbox:Claude Code /sandbox (ALL localhost + srt socket)'
         'intellij:JetBrains IDE integration — native diff viewer, /ide, plugin startup'
         '1password:1Password integration'
         'agent-browser:Agent browser (implies chromium)'
@@ -911,7 +1329,11 @@ class ClaudeSafe < Formula
         '--explain[Print effective grants summary]' \\
         '--stdout[Print policy text to stdout]' \\
         '--mistral[Use Vibe/Mistral instead of Claude]' \\
-        '--allow-localhost=[Whitelist localhost ports]:ports: ' \\
+        '--ds4[Use DS4 chat instead of Claude]' \\
+        '--ds4-agent[Use the DS4 agent instead of Claude]' \\
+        '--show-deny[Print the generated .claude-safe-deny profile]' \\
+        '--allow-localhost=[Whitelist localhost ports (or "all")]:ports: ' \\
+        '--allow-localhost[Whitelist ALL localhost ports]' \\
         '(-)--[Stop processing safehouse args]' \\
         '*::: :->cmd_args' && return
 
@@ -931,6 +1353,21 @@ class ClaudeSafe < Formula
 
     zsh_completion.install "_vibe-safe"
 
+    # Zsh completion for ds4-safe / ds4-agent-safe (delegate to claude-safe)
+    (buildpath/"_ds4-safe").write <<~ZSH
+      #compdef ds4-safe
+      _claude-safe "$@"
+    ZSH
+
+    zsh_completion.install "_ds4-safe"
+
+    (buildpath/"_ds4-agent-safe").write <<~ZSH
+      #compdef ds4-agent-safe
+      _claude-safe "$@"
+    ZSH
+
+    zsh_completion.install "_ds4-agent-safe"
+
   end
 
   def caveats
@@ -945,19 +1382,47 @@ class ClaudeSafe < Formula
       Prerequisites:
         Claude Code:  brew install --cask claude-code
         Vibe/Mistral: brew install mistral-vibe (optional)
+        DS4:          see https://dwarfstar.sh (optional, clone + make)
 
       Available commands:
-        claude        → shows a warning (use claude-safe instead)
-        claude-safe   → runs Claude inside agent-safehouse sandbox
-        claude-unsafe → runs Claude without sandboxing
-        vibe          → shows a warning (use vibe-safe instead)
-        vibe-safe     → runs Vibe/Mistral inside agent-safehouse sandbox
-        vibe-unsafe   → runs Vibe/Mistral without sandboxing
+        claude           → shows a warning (use claude-safe instead)
+        claude-safe      → runs Claude inside agent-safehouse sandbox
+        claude-unsafe    → runs Claude without sandboxing
+        vibe             → shows a warning (use vibe-safe instead)
+        vibe-safe        → runs Vibe/Mistral inside agent-safehouse sandbox
+        vibe-unsafe      → runs Vibe/Mistral without sandboxing
+        codex            → shows a warning (use codex-safe instead)
+        codex-safe       → runs Codex inside agent-safehouse sandbox
+        codex-unsafe     → runs Codex without sandboxing
+        ds4              → shows a warning (use ds4-safe instead)
+        ds4-safe         → runs DS4 chat inside agent-safehouse sandbox
+        ds4-unsafe       → runs DS4 chat without sandboxing
+        ds4-agent        → shows a warning (use ds4-agent-safe instead)
+        ds4-agent-safe   → runs the DS4 agent inside agent-safehouse sandbox
+        ds4-agent-unsafe → runs the DS4 agent without sandboxing
+
+      DS4 is used from its checkout, not from PATH. If it is not at ~/src/ds4,
+      configure it in ~/.zshrc BEFORE the 'source .../aliases.zsh' line:
+
+        export DS4_HOME=~/src/ds4                 # checkout
+        export DS4_MODELS=/Volumes/ssd/ds4-models # weights (default: $DS4_HOME/models)
+        export DS4_CACHE=~/.ds4                   # config + KV cache
 
     EOS
   end
 
   test do
     assert_predicate share/"aliases.zsh", :exist?
+    assert_predicate bin/"ds4-safe", :executable?
+    assert_predicate bin/"ds4-agent-safe", :executable?
+    # DS4 is optional — without a checkout, ds4-safe must fail with a clear hint.
+    output = shell_output("DS4_HOME=#{testpath}/nonexistent #{bin}/ds4-safe 2>&1", 1)
+    assert_match "DS4 executable not found", output
+
+    # Deny lists: a bad pattern must abort with file:line, not be applied blindly.
+    (testpath/".claude-safe-deny").write("**/nope\n")
+    output = shell_output("cd #{testpath} && HOME=#{testpath} #{bin}/claude-safe --show-deny 2>&1", 1)
+    assert_match ".claude-safe-deny:1", output
+    assert_match "unsupported pattern", output
   end
 end
