@@ -6,7 +6,7 @@ class ClaudeSafe < Formula
   homepage "https://github.com/sandstorm/homebrew-tap"
   url "https://github.com/sandstorm/homebrew-tap-placeholder/archive/refs/tags/1.0.0.tar.gz"
   sha256 "bedbe2717586bed363eef050a021b6c5de168ce9228a5ec3529274996d882a95"
-  version "2.16.0"
+  version "2.17.0"
 
   depends_on :macos
   depends_on "eugene1g/safehouse/agent-safehouse"
@@ -74,11 +74,16 @@ class ClaudeSafe < Formula
         --enable=sandbox    Claude Code's own sandbox (/sandbox) inside claude-safe.
                             Re-allows ALL localhost ports (srt proxies bind random
                             high ports) + the srt control socket in \\$TMPDIR.
-        --enable=intellij   JetBrains IDE integration (Claude Code plugin).
-                            Re-allows loopback to the IDE's WebSocket port ONLY and
-                            passes the plugin's env vars through. Required for the
-                            IntelliJ native diff viewer, selection sharing and /ide —
-                            without it the plugin reports "Claude failed to start".
+        --enable=intellij   JetBrains IDE integration — classic Claude Code plugin
+                            AND the IntelliJ 2026.3+ agent panel ("Air").
+                            Re-allows loopback to the discovered IDE ports ONLY,
+                            read access to Air's hook settings / open-in-IDE script,
+                            signals to host processes (IDE liveness check — note:
+                            this also lets the agent kill your other processes)
+                            and passes the IDE's env vars through. Required for the
+                            native diff viewer, selection sharing, /ide and Air's
+                            in-IDE diffs. Use the claude-safe-intellij wrapper as the
+                            IDE's Claude command (it adds --enable=intellij -- ).
 
       SAFEHOUSE FEATURES (pass-through, comma-separated)
         --enable=FEATURES   1password, agent-browser, browser-native-messaging,
@@ -286,8 +291,10 @@ class ClaudeSafe < Formula
           elif [[ "$name" == "localhost" ]]; then
             # --enable=localhost is a synonym for --allow-localhost (all ports)
             allow_localhost_all=true
-          elif [[ "$name" == "intellij" ]];then
-            enable_intellij=true ;;
+          elif [[ "$name" == "intellij" || "$name" == "jetbrains" || "$name" == "idea" ]]; then
+            # JetBrains IDE integration: only the discovered IDE ports are
+            # opened (see below), never all of localhost.
+            enable_intellij=true
           else
             out+=("$name")
           fi
@@ -444,33 +451,42 @@ class ClaudeSafe < Formula
         safehouse_args+=("--add-dirs=${DS4_CACHE}")
       fi
 
-      # Generate temp profile for --allow-localhost / --allow-localhost=PORTS.
-      # Appended after network-isolation.sb, so these allows override its denies.
-      if [[ "$allow_localhost_all" == true || -n "$allow_localhost_ports" ]]; then
-        _tmpprofile=$(_mktemp_profile localhost)
       # ---------------------------------------------------------------------------
-      # --enable=intellij: JetBrains IDE integration (Claude Code plugin)
+      # --enable=intellij: JetBrains IDE integration
       #
-      # The plugin runs a WebSocket server on a random loopback port and writes
-      # ~/.claude/ide/<port>.lock. Claude Code connects OUT to that port; everything
-      # IDE-side rides on that one connection (native diff viewer, selection sharing,
-      # /ide). network-isolation.sb denies all of loopback, so the connect fails with
-      # EPERM — the plugin then reports "Claude failed to start" even though Claude
-      # itself runs fine in the terminal.
+      # Two independent channels, both over loopback (which network-isolation.sb
+      # denies):
+      #
+      # 1. Classic "Claude Code" plugin: runs a WebSocket server on a random
+      #    loopback port and writes ~/.claude/ide/<port>.lock (+ exports
+      #    CLAUDE_CODE_SSE_PORT). Claude Code connects OUT to it; native diff
+      #    viewer, selection sharing and /ide ride on that connection. Blocked, the
+      #    plugin reports "Claude failed to start".
+      #
+      # 2. IntelliJ 2026.3+ agent panel ("Air"): launches
+      #    `claude --session-id … --settings ~/Library/Caches/JetBrains/<IDE>/claude-hooks/settings-*.json`
+      #    whose HTTP hooks (PostToolUse Write|Edit → IDE diff, Stop, …) POST to
+      #    localhost:<port>/air/claude/hook, and sets VISUAL to a script under
+      #    …/air/editor/ that curls the same port. The port is in
+      #    ~/Library/Caches/JetBrains/<IDE>/air/agent-callback-port.
       #
       # Rather than re-opening localhost wholesale (what --enable=sdd does), we
-      # discover the port the IDE is actually listening on and whitelist only that.
-      # No other local service (DB, dev server, other MCP server) becomes reachable.
+      # discover the ports the IDE is actually listening on and whitelist only
+      # those. No other local service (DB, dev server, other MCP server) becomes
+      # reachable. File grants for the Air paths live in profiles/intellij.sb.
+      #
+      # Runs BEFORE the localhost temp-profile block below, which turns
+      # allow_localhost_ports into the actual SBPL allows.
       # ---------------------------------------------------------------------------
       if [[ "$enable_intellij" == true ]]; then
         _ide_ports=()
 
-        # The plugin exports this into the terminal it launches Claude from.
+        # Classic plugin: exported into the terminal it launches Claude from.
         if [[ -n "${CLAUDE_CODE_SSE_PORT:-}" ]]; then
           _ide_ports+=("$CLAUDE_CODE_SSE_PORT")
         fi
 
-        # Fallback: the lockfile basename IS the port.
+        # Classic plugin fallback: the lockfile basename IS the port.
         for _lock in "$HOME"/.claude/ide/*.lock; do
           [[ -e "$_lock" ]] || continue
           _lock_port="$(basename "$_lock" .lock)"
@@ -480,11 +496,21 @@ class ClaudeSafe < Formula
           esac
         done
 
+        # Air: one callback-port file per installed IDE version.
+        for _pf in "$HOME"/Library/Caches/JetBrains/*/air/agent-callback-port; do
+          [[ -r "$_pf" ]] || continue
+          _air_port="$(tr -dc '0-9' < "$_pf")"
+          [[ -n "$_air_port" ]] && _ide_ports+=("$_air_port")
+        done
+
+        safehouse_args+=("--append-profile=${PROFILES_DIR}/intellij.sb")
+
         if [[ ${#_ide_ports[@]} -eq 0 ]]; then
           echo "⚠️  --enable=intellij: no JetBrains IDE port found — IDE features will stay off." >&2
-          echo "    CLAUDE_CODE_SSE_PORT is unset and ~/.claude/ide/ holds no *.lock file." >&2
-          echo "    Open the project in IntelliJ with the Claude Code plugin active and start" >&2
-          echo "    claude-safe from the IDE terminal, or pass --allow-localhost=PORT." >&2
+          echo "    CLAUDE_CODE_SSE_PORT is unset, ~/.claude/ide/ holds no *.lock file and no" >&2
+          echo "    ~/Library/Caches/JetBrains/*/air/agent-callback-port exists." >&2
+          echo "    Open the project in IntelliJ (Claude Code plugin or agent panel) and start" >&2
+          echo "    claude-safe-intellij from there, or pass --allow-localhost=PORT." >&2
         else
           # Feed the discovered ports into the existing --allow-localhost machinery.
           for _ide_port in "${_ide_ports[@]}"; do
@@ -496,19 +522,31 @@ class ClaudeSafe < Formula
           done
         fi
 
-        # The plugin identifies itself to Claude through env vars that safehouse's
+        # Hide the "running in a JetBrains terminal" signal from Claude.
+        # When Claude sees TERMINAL_EMULATOR=JetBrains-JediTerm (or
+        # FORCE_CODE_TERMINAL), /ide only lists an IDE whose lock-file port equals
+        # CLAUDE_CODE_SSE_PORT or whose pid is one of Claude's ancestors — found
+        # by running `ps -o ppid=` in a loop. /bin/ps is setuid and cannot be
+        # executed inside the sandbox at all, so the ancestor walk always fails
+        # and /ide shows "No available IDEs detected". Without these vars Claude
+        # matches the IDE by workspace folder (lock file vs. cwd) instead.
+        # unset (not just "don't pass") so this also holds with --env.
+        unset TERMINAL_EMULATOR FORCE_CODE_TERMINAL
+
+        # The IDE identifies itself to Claude through env vars that safehouse's
         # sanitized allowlist drops. --env-pass silently skips names that are unset.
+        #   classic plugin: CLAUDE_CODE_SSE_PORT, CLAUDE_CODE_IDE_HOST_OVERRIDE
+        #   Air:            VISUAL/EDITOR (open-in-IDE script), CLAUDE_CODE_AUTO_CONNECT_IDE,
+        #                   CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL
         if [[ "$pass_full_env" != true ]]; then
-          safehouse_args+=("--env-pass=CLAUDE_CODE_SSE_PORT,TERMINAL_EMULATOR,CLAUDE_CODE_IDE_HOST_OVERRIDE,FORCE_CODE_TERMINAL")
+          safehouse_args+=("--env-pass=CLAUDE_CODE_SSE_PORT,CLAUDE_CODE_IDE_HOST_OVERRIDE,VISUAL,EDITOR,CLAUDE_CODE_AUTO_CONNECT_IDE,CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL")
         fi
       fi
 
-      # Generate temp profile for --allow-localhost=PORTS
-      if [[ -n "$allow_localhost_ports" ]]; then
-        _tmpprofile=$(mktemp "${TMPDIR:-/tmp}/claude-safe-localhost-XXXXXX")
-        mv "$_tmpprofile" "${_tmpprofile}.sb"
-        _tmpprofile="${_tmpprofile}.sb"
-        trap 'rm -f "$_tmpprofile"' EXIT
+      # Generate temp profile for --allow-localhost / --allow-localhost=PORTS.
+      # Appended after network-isolation.sb, so these allows override its denies.
+      if [[ "$allow_localhost_all" == true || -n "$allow_localhost_ports" ]]; then
+        _tmpprofile=$(_mktemp_profile localhost)
         echo '(version 1)' > "$_tmpprofile"
         if [[ "$allow_localhost_all" == true ]]; then
           # All ports — "*" as the port in an (ip) filter matches any port.
@@ -692,6 +730,16 @@ class ClaudeSafe < Formula
     EOS
 
     bin.install "vibe-safe"
+
+    # Drop-in replacement for `claude` in JetBrains IDEs (classic plugin and the
+    # Air agent panel). The IDE appends claude args (--session-id, --settings,
+    # --resume, …); the `--` makes sure they reach claude, not safehouse.
+    (buildpath/"claude-safe-intellij").write <<~EOS
+      #!/bin/bash
+      exec "#{bin}/claude-safe" --enable=intellij -- "$@"
+    EOS
+
+    bin.install "claude-safe-intellij"
 
     (buildpath/"codex-safe").write <<~EOS
       #!/bin/bash
@@ -1207,6 +1255,47 @@ class ClaudeSafe < Formula
       )
     EOS
 
+    (buildpath/"profiles/intellij.sb").write <<~EOS
+      ;; Custom sandbox profile: intellij
+      ;;
+      ;; File grants for the IntelliJ 2026.3+ agent panel ("Air"):
+      ;;   - claude-hooks/settings-*.json (read)
+      ;;       passed as `claude --settings …`; holds the HTTP hooks that send
+      ;;       Write/Edit events to the IDE (in-IDE diff), Stop, Notification, …
+      ;;   - air/agent-callback-port (read)
+      ;;   - air/editor/*.sh (read + exec)
+      ;;       the VISUAL script Claude runs to open a file in the IDE (curl to
+      ;;       the IDE's loopback port).
+      ;; Everything else under ~/Library/Caches/JetBrains — notably
+      ;; air/launch-access.key — stays blocked.
+      ;;
+      ;; The loopback ports themselves are opened by claude-safe's generated
+      ;; --allow-localhost profile (only the discovered IDE ports).
+      ;;
+      ;; Activated via: claude-safe --enable=intellij  (or claude-safe-intellij)
+
+      (version 1)
+
+      (allow file-read*
+        (regex #"/Library/Caches/JetBrains/[^/]+/claude-hooks/settings-[^/]+[.]json$")
+        (regex #"/Library/Caches/JetBrains/[^/]+/air/agent-callback-port$")
+      )
+      (allow file-read* process-exec*
+        (regex #"/Library/Caches/JetBrains/[^/]+/air/editor/[^/]+[.]sh$")
+      )
+
+      ;; Classic plugin: liveness check of the IDE process.
+      ;;   Claude Code checks each ~/.claude/ide/<port>.lock with kill(pid, 0) on
+      ;;   the IDE's pid. safehouse only allows signals within the same sandbox,
+      ;;   so the check fails with EPERM, Claude treats the IDE as dead and
+      ;;   DELETES the lock file → /ide shows "No available IDEs detected".
+      ;;   SBPL cannot narrow signal targets to one pid, so this allows signalling
+      ;;   the user's other processes — only with --enable=intellij.
+      ;;   Deliberately NOT process-info-pidinfo (that would expose other
+      ;;   processes' argv/env).
+      (allow signal (target others))
+    EOS
+
     (buildpath/"profiles/sandbox.sb").write <<~EOS
       ;; Custom sandbox profile: sandbox
       ;;
@@ -1388,7 +1477,8 @@ class ClaudeSafe < Formula
         claude           → shows a warning (use claude-safe instead)
         claude-safe      → runs Claude inside agent-safehouse sandbox
         claude-unsafe    → runs Claude without sandboxing
-        vibe             → shows a warning (use vibe-safe instead)
+        claude-safe-intellij → claude-safe --enable=intellij -- … (IDE drop-in)
+        vibe            → shows a warning (use vibe-safe instead)
         vibe-safe        → runs Vibe/Mistral inside agent-safehouse sandbox
         vibe-unsafe      → runs Vibe/Mistral without sandboxing
         codex            → shows a warning (use codex-safe instead)
@@ -1408,12 +1498,22 @@ class ClaudeSafe < Formula
         export DS4_MODELS=/Volumes/ssd/ds4-models # weights (default: $DS4_HOME/models)
         export DS4_CACHE=~/.ds4                   # config + KV cache
 
+      JetBrains IDEs (IntelliJ, PhpStorm, …) — use claude-safe-intellij as the
+      Claude command so IDE diffs and /ide work inside the sandbox:
+        Claude Code plugin: set the plugin's Claude command to
+                            claude-safe-intellij
+        Agent panel (Air):  add a custom Claude agent with executable
+                            claude-safe-intellij and disable the auto-discovered
+                            one — otherwise Air runs plain `claude` UNSANDBOXED.
+
     EOS
   end
 
   test do
     assert_predicate share/"aliases.zsh", :exist?
     assert_predicate bin/"ds4-safe", :executable?
+    assert_predicate bin/"claude-safe-intellij", :executable?
+    assert_predicate share/"profiles/intellij.sb", :exist?
     assert_predicate bin/"ds4-agent-safe", :executable?
     # DS4 is optional — without a checkout, ds4-safe must fail with a clear hint.
     output = shell_output("DS4_HOME=#{testpath}/nonexistent #{bin}/ds4-safe 2>&1", 1)
